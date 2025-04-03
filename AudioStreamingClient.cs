@@ -175,6 +175,7 @@ namespace StreamingApplication
 
         private async Task ProcessAudioPacket(int packetSize)
         {
+            //Logger.Log($"Process packet with bytes length: {packetSize}", Logger.LogLevel.Debug);
             var encryptedData = new byte[packetSize];
             int totalRead = 0;
 
@@ -191,6 +192,7 @@ namespace StreamingApplication
             }
 
             var decryptedData = EncryptionHelper.Decrypt(encryptedData);
+            Logger.Log($"Packet decrypted", Logger.LogLevel.Debug);
             _waveProvider!.AddSamples(decryptedData, 0, decryptedData.Length);
         }
 

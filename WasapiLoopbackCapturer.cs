@@ -5,7 +5,7 @@ namespace StreamingApplication
 {
     public class WasapiLoopbackCapturer : IAudioCapturer, IDisposable
     {
-        public const double SilenceThreshold = 0.001; // 0.1% от максимальной амплитуды
+        public const double SilenceThreshold = 0.0001; // 0.01% от максимальной амплитуды
         private readonly WasapiLoopbackCapture _capture;
         private bool _disposed;
 
@@ -18,14 +18,20 @@ namespace StreamingApplication
                 ShareMode = AudioClientShareMode.Shared,
                 WaveFormat = device.AudioClient.MixFormat
             };
+            Logger.Log($"[WASAPI] Capture format: {_capture.WaveFormat}", Logger.LogLevel.Info);
             _capture.DataAvailable += OnDataAvailable;
         }
 
         private void OnDataAvailable(object? sender, WaveInEventArgs e)
         {
+            if (_capture.WaveFormat.Encoding != WaveFormatEncoding.IeeeFloat)
+            {
+                Logger.Log($"[WASAPI] Unsupported format: {_capture.WaveFormat}", Logger.LogLevel.Warning);
+            }
+
             if (IsSilence(e.Buffer, e.BytesRecorded))
             {
-                Logger.Log("[WASAPI] Silence detected, skipping", Logger.LogLevel.Debug);
+                //Logger.Log("[WASAPI] Silence detected, skipping", Logger.LogLevel.Debug);
                 return;
             }
 
@@ -38,16 +44,34 @@ namespace StreamingApplication
         {
             if (bytesRecorded == 0) return true;
 
-            double sum = 0;
-            int sampleCount = bytesRecorded / 2;
+            // Получаем формат аудио
+            var format = _capture.WaveFormat;
+            bool isFloat = format.Encoding == WaveFormatEncoding.IeeeFloat;
+            int bytesPerSample = format.BitsPerSample / 8;
 
-            for (int i = 0; i < bytesRecorded; i += 2)
+            double sum = 0;
+            int sampleCount = bytesRecorded / bytesPerSample;
+
+            for (int i = 0; i < bytesRecorded; i += bytesPerSample)
             {
-                short sample = BitConverter.ToInt16(buffer, i);
-                sum += sample * sample;
+                double sampleValue;
+                if (isFloat && bytesPerSample == 4)
+                {
+                    // Для 32-битного float
+                    sampleValue = BitConverter.ToSingle(buffer, i);
+                }
+                else
+                {
+                    // Для 16-битного PCM (предполагается по умолчанию)
+                    short sample = BitConverter.ToInt16(buffer, i);
+                    sampleValue = sample / (double)short.MaxValue;
+                }
+
+                sum += sampleValue * sampleValue;
             }
 
-            double rms = Math.Sqrt(sum / sampleCount) / short.MaxValue;
+            double rms = Math.Sqrt(sum / sampleCount);
+            //Logger.Log($"[WASAPI] RMS: {rms}", Logger.LogLevel.Debug);
             return rms < SilenceThreshold;
         }
 
