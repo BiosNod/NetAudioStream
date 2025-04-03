@@ -1,9 +1,5 @@
 ﻿using NAudio.Wave;
-using NAudio.CoreAudioApi;
-using System;
-using System.IO;
 using System.Net.Sockets;
-using System.Threading.Tasks;
 
 namespace StreamingApplication
 {
@@ -80,8 +76,8 @@ namespace StreamingApplication
                 channels
             );
 
-            var customWaveFormat = AudioDeviceSelector.SelectPlaybackDevice().AudioClient.MixFormat;
-            Console.WriteLine($"{serverWaveFormat} vs {customWaveFormat}");
+            //var customWaveFormat = AudioDeviceSelector.SelectPlaybackDevice().AudioClient.MixFormat;
+            //Console.WriteLine($"{serverWaveFormat} vs {customWaveFormat}");
             _waveProvider = new BufferedWaveProvider(serverWaveFormat)
             {
                 BufferDuration = TimeSpan.FromSeconds(60),

@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -71,12 +69,6 @@ namespace StreamingApplication
         {
             try
             {
-                if (IsSilence(data))
-                {
-                    Logger.Log("[AudioStreamingServer] Skipping silent frame", Logger.LogLevel.Debug);
-                    return;
-                }
-
                 var encryptedData = EncryptionHelper.Encrypt(data);
                 SendToAllClients(encryptedData);
             }
@@ -84,23 +76,6 @@ namespace StreamingApplication
             {
                 Logger.Log($"Audio error: {ex.Message}", Logger.LogLevel.Error);
             }
-        }
-
-        private bool IsSilence(byte[] data)
-        {
-            if (data.Length == 0) return true;
-
-            double sum = 0;
-            int sampleCount = data.Length / 2;
-
-            for (int i = 0; i < data.Length; i += 2)
-            {
-                short sample = BitConverter.ToInt16(data, i);
-                sum += sample * sample;
-            }
-
-            double rms = Math.Sqrt(sum / sampleCount) / short.MaxValue;
-            return rms < 0.001;
         }
 
         private void SendToAllClients(byte[] data)

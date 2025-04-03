@@ -1,12 +1,11 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using System;
 
 namespace StreamingApplication
 {
     public class WasapiLoopbackCapturer : IAudioCapturer, IDisposable
     {
-        private const double SilenceThreshold = 0.001; // 0.1% от максимальной амплитуды
+        public const double SilenceThreshold = 0.001; // 0.1% от максимальной амплитуды
         private readonly WasapiLoopbackCapture _capture;
         private bool _disposed;
 

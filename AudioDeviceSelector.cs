@@ -1,5 +1,4 @@
 ﻿using NAudio.CoreAudioApi;
-using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace StreamingApplication
