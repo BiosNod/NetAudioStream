@@ -5,7 +5,6 @@ namespace StreamingApplication
 {
     public class AudioStreamingClient : IDisposable
     {
-        #region Fields
         private TcpClient? _client;
         private NetworkStream? _stream;
         private WaveOutEvent? _outputDevice;
@@ -13,32 +12,66 @@ namespace StreamingApplication
         private bool _isConnected;
         private int _selectedDevice;
         private MemoryStream? _audioBuffer;
-        #endregion
+        private string _serverIp = string.Empty;
+        private int _serverPort;
+        private int _reconnectAttempts = 0;
+        private const int MaxReconnectAttempts = 5;
+        private const int ReconnectDelayMs = 5000;
+        private CancellationTokenSource? _cts;
+
+        public event Action? OnConnected;
+        public event Action<string>? OnDisconnected;
+        public event Action<string>? OnReconnecting;
 
         #region Public Methods
         public async Task ConnectAsync(string ip, int port, int outputDevice)
         {
-            try
+            _serverIp = ip;
+            _serverPort = port;
+            _selectedDevice = outputDevice;
+            _cts = new CancellationTokenSource();
+
+            await TryConnectWithRetry();
+        }
+
+        private async Task TryConnectWithRetry()
+        {
+            while (_reconnectAttempts < MaxReconnectAttempts && !(_cts?.IsCancellationRequested ?? true))
             {
-                _selectedDevice = outputDevice;
-                _audioBuffer = new MemoryStream(2 * 1024 * 1024);
+                try
+                {
+                    _audioBuffer = new MemoryStream(2 * 1024 * 1024);
+                    await InitializeNetworkConnection(_serverIp, _serverPort);
 
-                await InitializeNetworkConnection(ip, port);
+                    var (sampleRate, bits, channels) = await ReceiveWaveFormat();
+                    InitializeAudioDevice(sampleRate, bits, channels);
 
-                // Получаем параметры формата
-                var (sampleRate, bits, channels) = await ReceiveWaveFormat();
-                InitializeAudioDevice(sampleRate, bits, channels);
+                    _reconnectAttempts = 0; // Сброс счетчика при успешном подключении
+                    OnConnected?.Invoke();
+                    StartReceivingData();
+                    Logger.Log($"Connected to {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _reconnectAttempts++;
+                    if (_reconnectAttempts >= MaxReconnectAttempts)
+                    {
+                        Logger.Log($"Max reconnect attempts reached. Giving up.", Logger.LogLevel.Error);
+                        OnDisconnected?.Invoke("Max reconnect attempts reached");
+                        Disconnect();
+                        return;
+                    }
 
-                StartReceivingData();
-                Logger.Log($"Connected to {ip}:{port}", Logger.LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Connection error: {ex.Message}", Logger.LogLevel.Error);
-                Disconnect();
-                throw;
+                    OnReconnecting?.Invoke($"Attempt {_reconnectAttempts} of {MaxReconnectAttempts}");
+                    Logger.Log($"Connection failed ({_reconnectAttempts}/{MaxReconnectAttempts}): {ex.Message}. Retrying in {ReconnectDelayMs / 1000} seconds...",
+                             Logger.LogLevel.Warning);
+
+                    await Task.Delay(ReconnectDelayMs, _cts?.Token ?? CancellationToken.None);
+                }
             }
         }
+
 
         private async Task<(int, int, int)> ReceiveWaveFormat()
         {
@@ -90,8 +123,9 @@ namespace StreamingApplication
 
         public void Disconnect()
         {
-            if (!_isConnected) return;
+            if (!_isConnected && _reconnectAttempts == 0) return;
 
+            _cts?.Cancel();
             _isConnected = false;
             Logger.Log("Disconnecting...", Logger.LogLevel.Info);
 
@@ -101,6 +135,8 @@ namespace StreamingApplication
             _stream?.Dispose();
             _outputDevice?.Dispose();
             _audioBuffer?.Dispose();
+
+            OnDisconnected?.Invoke("Disconnected by user");
         }
 
         public void Dispose()
@@ -111,7 +147,6 @@ namespace StreamingApplication
         #endregion
 
         #region Private Methods
-
         private async Task InitializeNetworkConnection(string ip, int port)
         {
             _client = new TcpClient();
@@ -131,16 +166,30 @@ namespace StreamingApplication
                 catch (Exception ex)
                 {
                     Logger.Log($"Receive loop error: {ex.Message}", Logger.LogLevel.Error);
-                    Disconnect();
+                    HandleDisconnection();
                 }
             });
+        }
+
+        private void HandleDisconnection()
+        {
+            if (!_isConnected) return;
+
+            _isConnected = false;
+            OnDisconnected?.Invoke("Connection lost");
+
+            if (!(_cts?.IsCancellationRequested ?? true))
+            {
+                Logger.Log("Attempting to reconnect...", Logger.LogLevel.Info);
+                _ = TryConnectWithRetry();
+            }
         }
 
         private async Task ReceiveDataLoop()
         {
             var headerBuffer = new byte[4];
 
-            while (_isConnected)
+            while (_isConnected && !(_cts?.IsCancellationRequested ?? true))
             {
                 try
                 {
@@ -150,10 +199,11 @@ namespace StreamingApplication
                     await ProcessAudioPacket(packetSize);
                     AdjustBufferSize();
                 }
-                catch (SocketException)
+                catch (Exception ex) when (ex is SocketException or IOException)
                 {
-                    Logger.Log("Connection lost", Logger.LogLevel.Warning);
-                    Disconnect();
+                    Logger.Log($"Network error: {ex.Message}", Logger.LogLevel.Warning);
+                    HandleDisconnection();
+                    return;
                 }
                 catch (Exception ex)
                 {
