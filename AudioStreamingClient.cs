@@ -175,7 +175,7 @@ namespace StreamingApplication
 
         private async Task ProcessAudioPacket(int packetSize)
         {
-            //Logger.Log($"Process packet with bytes length: {packetSize}", Logger.LogLevel.Debug);
+            Logger.Log($"Process packet with bytes length: {packetSize}", Logger.LogLevel.Debug);
             var encryptedData = new byte[packetSize];
             int totalRead = 0;
 

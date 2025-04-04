@@ -16,6 +16,7 @@ namespace StreamingApplication
                 Console.WriteLine("2. Connect to Streaming Server");
                 Console.WriteLine("3. Test Playback Device");
                 Console.WriteLine("4. Exit");
+                Console.WriteLine($"5. Toggle Debug Logs (Currently: {(Logger.DebugEnabled ? "ON" : "OFF")})");
 
                 switch (Console.ReadLine())
                 {
@@ -30,6 +31,9 @@ namespace StreamingApplication
                         break;
                     case "4":
                         return;
+                    case "5":
+                        Logger.DebugEnabled = !Logger.DebugEnabled;
+                        break;
                 }
             }
         }

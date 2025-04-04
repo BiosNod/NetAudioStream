@@ -7,9 +7,13 @@ namespace StreamingApplication
     {
         public enum LogLevel { Debug, Info, Warning, Error }
 
+        public static bool DebugEnabled { get; set; } = false;
+
         public static void Log(string message, LogLevel level = LogLevel.Info)
         {
-            // Разрешить вывод Debug сообщений
+            if (level == LogLevel.Debug && !DebugEnabled)
+                return;
+
             var color = level switch
             {
                 LogLevel.Debug => ConsoleColor.Gray,

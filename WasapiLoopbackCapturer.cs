@@ -31,7 +31,7 @@ namespace StreamingApplication
 
             if (IsSilence(e.Buffer, e.BytesRecorded))
             {
-                //Logger.Log("[WASAPI] Silence detected, skipping", Logger.LogLevel.Debug);
+                Logger.Log("[WASAPI] Silence detected, skipping", Logger.LogLevel.Debug);
                 return;
             }
 
@@ -71,7 +71,7 @@ namespace StreamingApplication
             }
 
             double rms = Math.Sqrt(sum / sampleCount);
-            //Logger.Log($"[WASAPI] RMS: {rms}", Logger.LogLevel.Debug);
+            Logger.Log($"[WASAPI] RMS: {rms}", Logger.LogLevel.Debug);
             return rms < SilenceThreshold;
         }
 

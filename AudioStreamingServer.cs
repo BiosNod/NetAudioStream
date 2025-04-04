@@ -80,7 +80,7 @@ namespace StreamingApplication
 
         private void SendToAllClients(byte[] data)
         {
-            //Logger.Log($"Send bytes length: {data.Length}", Logger.LogLevel.Debug);
+            Logger.Log($"Send bytes length: {data.Length}", Logger.LogLevel.Debug);
             List<NetworkStream> deadClients = new List<NetworkStream>();
 
             lock (_syncLock)
