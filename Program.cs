@@ -81,18 +81,33 @@ namespace StreamingApplication
             {
                 int deviceIndex = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
-                string testFile = "test.mp3";
+                Console.Write($"Enter MP3 file path [test.mp3]: ");
+                string testFileInput = Console.ReadLine();
 
-                if (!File.Exists(testFile))
-                   testFile = "../../../" + testFile;
+                string testFile = string.IsNullOrWhiteSpace(testFileInput) ? "test.mp3" : testFileInput;
 
-                if (!File.Exists(testFile))
-                    throw new Exception($"Test file doesn't exist!");
+                // Список возможных путей для поиска файла
+                var possiblePaths = new List<string>
+                {
+                    testFile,                            // Текущая директория
+                    Path.Combine("..", testFile),        // Родительская директория
+                    Path.Combine("../..", testFile),      // Два уровня выше
+                    Path.Combine("../../..", testFile),   // Три уровня выше (как у тебя было)
+                    Path.Combine("AudioFiles", testFile)  // Папка AudioFiles
+                };
 
-                using var reader = new AudioFileReader(testFile);
+                string? foundPath = possiblePaths.FirstOrDefault(File.Exists);
+
+                if (foundPath == null)
+                {
+                    throw new Exception($"Test file '{testFile}' not found in:\n" +
+                                       string.Join("\n", possiblePaths.Select(p => $" - {Path.GetFullPath(p)}")));
+                }
+
+                using var reader = new AudioFileReader(foundPath);
                 using var waveOut = new WaveOutEvent
                 {
-                    DeviceNumber = deviceIndex // Используем индекс напрямую из WaveOut
+                    DeviceNumber = deviceIndex
                 };
 
                 waveOut.Init(reader);
@@ -101,6 +116,7 @@ namespace StreamingApplication
                 var caps = new AudioDeviceSelector.WAVEOUTCAPS();
                 AudioDeviceSelector.waveOutGetDevCaps(deviceIndex, ref caps, Marshal.SizeOf(caps));
                 Console.WriteLine($"Testing: {caps.szPname} (Index: {deviceIndex})");
+                Console.WriteLine($"Playing file: {Path.GetFullPath(foundPath)}");
 
                 while (waveOut.PlaybackState == PlaybackState.Playing)
                     await Task.Delay(500);
