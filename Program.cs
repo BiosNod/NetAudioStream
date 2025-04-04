@@ -91,9 +91,9 @@ namespace StreamingApplication
                 {
                     testFile,                            // Текущая директория
                     Path.Combine("..", testFile),        // Родительская директория
-                    Path.Combine("../..", testFile),      // Два уровня выше
-                    Path.Combine("../../..", testFile),   // Три уровня выше (как у тебя было)
-                    Path.Combine("AudioFiles", testFile)  // Папка AudioFiles
+                    Path.Combine("../..", testFile),     // Два уровня выше
+                    Path.Combine("../../..", testFile),  // Три уровня выше
+                    Path.Combine("AudioFiles", testFile) // Папка AudioFiles
                 };
 
                 string? foundPath = possiblePaths.FirstOrDefault(File.Exists);
@@ -115,15 +115,26 @@ namespace StreamingApplication
 
                 var caps = new AudioDeviceSelector.WAVEOUTCAPS();
                 AudioDeviceSelector.waveOutGetDevCaps(deviceIndex, ref caps, Marshal.SizeOf(caps));
-                Console.WriteLine($"Testing: {caps.szPname} (Index: {deviceIndex})");
+                Console.WriteLine($"\nTesting: {caps.szPname} (Index: {deviceIndex})");
                 Console.WriteLine($"Playing file: {Path.GetFullPath(foundPath)}");
+                Console.WriteLine("\nPress Q to stop playback...");
 
+                // Ожидаем завершения воспроизведения или нажатия Q
                 while (waveOut.PlaybackState == PlaybackState.Playing)
-                    await Task.Delay(500);
+                {
+                    if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Q)
+                    {
+                        waveOut.Stop();
+                        Console.WriteLine("Playback stopped by user.");
+                        break;
+                    }
+                    await Task.Delay(100);
+                }
             }
             catch (Exception ex)
             {
                 Logger.Log($"Test error: {ex.Message}", Logger.LogLevel.Error);
+                Console.WriteLine("Press any key to continue...");
                 Console.ReadKey();
             }
         }
