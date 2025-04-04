@@ -19,6 +19,7 @@ namespace StreamingApplication
                 Console.WriteLine("4. Exit");
                 Console.WriteLine($"5. Toggle Debug Logs (Currently: {(Logger.DebugEnabled ? "ON" : "OFF")})");
                 Console.WriteLine("6. Show Audio Devices");
+                Console.WriteLine("7. Manage Network Settings");
 
                 switch (Console.ReadLine())
                 {
@@ -39,7 +40,38 @@ namespace StreamingApplication
                     case "6":
                         ShowAudioDevicesMenu();
                         break;
+                    case "7":
+                        ShowNetworkSettingsMenu();
+                        break;
                 }
+            }
+        }
+
+        static void ShowNetworkSettingsMenu()
+        {
+            Console.Clear();
+            Console.WriteLine("Network Settings Management:");
+            Console.WriteLine("1. View Current Settings");
+            Console.WriteLine("2. Reset to Defaults");
+            Console.WriteLine("3. Back to Main Menu");
+
+            switch (Console.ReadLine())
+            {
+                case "1":
+                    NetworkSettings.ShowCurrentSettings();
+                    Console.WriteLine("\nPress any key to continue...");
+                    Console.ReadKey();
+                    break;
+                case "2":
+                    Console.WriteLine("\nAre you sure you want to reset network settings? (y/n)");
+                    if (Console.ReadLine()?.ToLower() == "y")
+                    {
+                        NetworkSettings.ResetSettings();
+                        Console.WriteLine("Settings have been reset to defaults.");
+                        Console.WriteLine("Press any key to continue...");
+                        Console.ReadKey();
+                    }
+                    break;
             }
         }
 
