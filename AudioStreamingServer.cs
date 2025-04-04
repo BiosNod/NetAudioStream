@@ -12,13 +12,18 @@ namespace StreamingApplication
         private readonly IAudioCapturer _capturer;
         private readonly object _syncLock = new object();
         private bool _isRunning;
-        private WaveFormat _serverWaveFormat; 
+        private WaveFormat _serverWaveFormat;
 
-        public AudioStreamingServer(string ip, int port, MMDevice inputDevice)
+        public AudioStreamingServer(string ip, int port, MMDevice inputDevice, DataFlow flow)
         {
             _listener = new TcpListener(IPAddress.Parse(ip), port);
-            _capturer = new WasapiLoopbackCapturer(inputDevice);
-            _serverWaveFormat = inputDevice.AudioClient.MixFormat; // Сохраняем формат
+
+            if (flow == DataFlow.Render)
+                _capturer = new WasapiLoopbackCapturer(inputDevice);
+            else
+                _capturer = new WasapiCaptureCapturer(inputDevice);
+
+            _serverWaveFormat = inputDevice.AudioClient.MixFormat;
             _capturer.DataAvailable += OnAudioDataAvailable;
         }
 

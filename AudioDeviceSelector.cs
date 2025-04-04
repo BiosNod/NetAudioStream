@@ -77,5 +77,17 @@ namespace StreamingApplication
                 Console.WriteLine($"{i}. {devices[i].FriendlyName} (ID: {devices[i].ID})");
             }
         }
+
+        public static MMDevice SelectRecordingDeviceMMD()
+        {
+            var enumerator = new MMDeviceEnumerator();
+            var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
+
+            Console.WriteLine("Available Recording Devices:");
+            for (int i = 0; i < devices.Count; i++)
+                Console.WriteLine($"{i}. {devices[i].FriendlyName}");
+
+            return devices[int.Parse(Console.ReadLine()!)];
+        }
     }
 }

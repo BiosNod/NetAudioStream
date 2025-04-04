@@ -110,10 +110,27 @@ namespace StreamingApplication
         {
             try
             {
-                var device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
-                var (ip, port) = NetworkSettings.GetServerSettings();
+                Console.WriteLine("Select device type:");
+                Console.WriteLine("1. Playback (System Audio)");
+                Console.WriteLine("2. Recording (Microphone)");
+                var typeChoice = Console.ReadLine();
 
-                using var server = new AudioStreamingServer(ip, port, device);
+                MMDevice device;
+                DataFlow flow;
+
+                if (typeChoice == "1")
+                {
+                    device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
+                    flow = DataFlow.Render;
+                }
+                else
+                {
+                    device = AudioDeviceSelector.SelectRecordingDeviceMMD();
+                    flow = DataFlow.Capture;
+                }
+
+                var (ip, port) = NetworkSettings.GetServerSettings();
+                using var server = new AudioStreamingServer(ip, port, device, flow);
                 server.Start();
 
                 Console.WriteLine("Server started. Press Q to stop...");
@@ -135,7 +152,7 @@ namespace StreamingApplication
                 var outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 using var client = new AudioStreamingClient();
-                await client.ConnectAsync(ip, port, outputDevice); // Теперь передается MMDevice
+                await client.ConnectAsync(ip, port, outputDevice);
 
                 Console.WriteLine("Client started. Press Q to stop...");
                 while (Console.ReadKey(true).Key != ConsoleKey.Q) { }
