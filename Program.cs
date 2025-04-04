@@ -49,29 +49,42 @@ namespace StreamingApplication
 
         static void ShowNetworkSettingsMenu()
         {
-            Console.Clear();
-            Console.WriteLine("Network Settings Management:");
-            Console.WriteLine("1. View Current Settings");
-            Console.WriteLine("2. Reset to Defaults");
-            Console.WriteLine("3. Back to Main Menu");
-
-            switch (Console.ReadLine())
+            while (true)
             {
-                case "1":
-                    NetworkSettings.ShowCurrentSettings();
-                    Console.WriteLine("\nPress any key to continue...");
-                    Console.ReadKey();
-                    break;
-                case "2":
-                    Console.WriteLine("\nAre you sure you want to reset network settings? (y/n)");
-                    if (Console.ReadLine()?.ToLower() == "y")
-                    {
-                        NetworkSettings.ResetSettings();
-                        Console.WriteLine("Settings have been reset to defaults.");
+                Console.Clear();
+                Console.WriteLine("Network Settings Management:");
+                Console.WriteLine("1. View Current Settings");
+                Console.WriteLine("2. Toggle UPnP (Current: " +
+                    (NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
+                Console.WriteLine("3. Reset to Defaults");
+                Console.WriteLine("4. Back to Main Menu");
+
+                switch (Console.ReadLine())
+                {
+                    case "1":
+                        NetworkSettings.ShowCurrentSettings();
+                        Console.WriteLine("\nPress any key to continue...");
+                        Console.ReadKey();
+                        break;
+                    case "2":
+                        NetworkSettings.ToggleUPnP();
+                        Console.WriteLine($"\nUPnP is now {(NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled")}");
                         Console.WriteLine("Press any key to continue...");
                         Console.ReadKey();
-                    }
-                    break;
+                        break;
+                    case "3":
+                        Console.WriteLine("\nAre you sure you want to reset network settings? (y/n)");
+                        if (Console.ReadLine()?.ToLower() == "y")
+                        {
+                            NetworkSettings.ResetSettings();
+                            Console.WriteLine("Settings have been reset to defaults.");
+                            Console.WriteLine("Press any key to continue...");
+                            Console.ReadKey();
+                        }
+                        break;
+                    case "4":
+                        return;
+                }
             }
         }
 

@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.IO;
+using Open.Nat;
 
 namespace StreamingApplication
 {
@@ -14,7 +15,17 @@ namespace StreamingApplication
             public int LastServerPort { get; set; } = 49800;
             public string LastClientIp { get; set; } = "127.0.0.1";
             public int LastClientPort { get; set; } = 49800;
+            public bool EnableUPnP { get; set; } = true;
         }
+
+        public static bool IsUPnPEnabled() => _settings.EnableUPnP;
+
+        public static void ToggleUPnP()
+        {
+            _settings.EnableUPnP = !_settings.EnableUPnP;
+            SaveSettings();
+        }
+
 
         static NetworkSettings()
         {
@@ -60,6 +71,7 @@ namespace StreamingApplication
             Console.WriteLine($"Server Port: {_settings.LastServerPort}");
             Console.WriteLine($"Client IP: {_settings.LastClientIp}");
             Console.WriteLine($"Client Port: {_settings.LastClientPort}");
+            Console.WriteLine($"UPnP: {(_settings.EnableUPnP ? "Enabled" : "Disabled")}");
             Console.WriteLine($"Config file: {Path.GetFullPath(SettingsFile)}");
         }
 
@@ -130,6 +142,51 @@ namespace StreamingApplication
             }
 
             return (ip, port);
+        }
+
+        public static async Task<bool> TryForwardPort(int port, string description)
+        {
+            if (!_settings.EnableUPnP) return false;
+
+            try
+            {
+                var discoverer = new NatDiscoverer();
+                var device = await discoverer.DiscoverDeviceAsync();
+                await device.CreatePortMapAsync(new Mapping(
+                    Protocol.Tcp,
+                    port,
+                    port,
+                    description));
+
+                Logger.Log($"UPnP: Port {port} forwarded successfully", Logger.LogLevel.Info);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"UPnP failed: {ex.Message}", Logger.LogLevel.Warning);
+                return false;
+            }
+        }
+
+        public static async Task RemovePortForward(int port)
+        {
+            if (!_settings.EnableUPnP) return;
+
+            try
+            {
+                var discoverer = new NatDiscoverer();
+                var device = await discoverer.DiscoverDeviceAsync();
+                await device.DeletePortMapAsync(new Mapping(
+                    Protocol.Tcp,
+                    port,
+                    port));
+
+                Logger.Log($"UPnP: Port {port} forwarding removed", Logger.LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"UPnP remove failed: {ex.Message}", Logger.LogLevel.Warning);
+            }
         }
     }
 }

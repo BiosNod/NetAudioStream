@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using NAudio.CoreAudioApi;
+using NAudio.Gui;
 using NAudio.Wave;
 
 namespace StreamingApplication
@@ -8,6 +9,7 @@ namespace StreamingApplication
     public class AudioStreamingServer : IDisposable
     {
         private readonly TcpListener _listener;
+        private readonly int _port;
         private readonly List<NetworkStream> _clientStreams = new List<NetworkStream>();
         private readonly IAudioCapturer _capturer;
         private readonly object _syncLock = new object();
@@ -16,6 +18,7 @@ namespace StreamingApplication
 
         public AudioStreamingServer(string ip, int port, MMDevice inputDevice, DataFlow flow, uint processId = 0)
         {
+            _port = port;
             _listener = new TcpListener(IPAddress.Parse(ip), port);
 
             if (flow == DataFlow.Render)
@@ -34,9 +37,16 @@ namespace StreamingApplication
             _capturer.DataAvailable += OnAudioDataAvailable;
         }
 
-        public void Start()
+        public async void Start()
         {
             _isRunning = true;
+
+            // Проброска порта через UPnP
+            if (_port > 0)
+            {
+                await NetworkSettings.TryForwardPort(_port, "NetAudioStream Server");
+            }
+
             _capturer.Start();
             _listener.Start();
             Task.Run(AcceptClientsLoop);
@@ -124,6 +134,12 @@ namespace StreamingApplication
             _isRunning = false;
             _capturer.Stop();
             _listener.Stop();
+
+            // Удаление проброски порта
+            if (_port > 0)
+            {
+                _ = NetworkSettings.RemovePortForward(_port);
+            }
 
             lock (_syncLock)
             {
