@@ -1,4 +1,5 @@
 ﻿using NAudio.CoreAudioApi;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace StreamingApplication
@@ -88,6 +89,43 @@ namespace StreamingApplication
                 Console.WriteLine($"{i}. {devices[i].FriendlyName}");
 
             return devices[int.Parse(Console.ReadLine()!)];
+        }
+
+        // AudioDeviceSelector.cs
+        public static uint SelectProcess()
+        {
+            using var deviceEnumerator = new MMDeviceEnumerator();
+            var device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+            var processes = new List<(string Name, uint Pid, long Memory)>();
+
+            var sessionManager = device.AudioSessionManager;
+
+            for (int i = 0; i < sessionManager.Sessions.Count; i++)
+            {
+                var session = sessionManager.Sessions[i];
+
+                if (session.GetProcessID == 0) continue;
+
+                try
+                {
+                    var process = Process.GetProcessById((int)session.GetProcessID);
+                    processes.Add((Name: process.ProcessName, Pid: session.GetProcessID, Memory: process.WorkingSet64)); // Явное именование элементов кортежа
+                }
+                catch { /* Игнорируем недоступные процессы */ }
+            }
+
+            var sorted = processes
+                .Where(p => p.Memory >= 1 * 1024 * 1024)
+                .OrderByDescending(p => p.Memory)
+                .ToList();
+
+            Console.WriteLine("Available Processes:");
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                Console.WriteLine($"{i}. {sorted[i].Name} (PID: {sorted[i].Pid}) - {sorted[i].Memory / 1024 / 1024} MB");
+            }
+
+            return sorted[int.Parse(Console.ReadLine()!)].Pid;
         }
     }
 }

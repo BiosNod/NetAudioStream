@@ -106,31 +106,40 @@ namespace StreamingApplication
             }
         }
 
+        // Program.cs (обновление ServerMode)
         static void ServerMode()
         {
             try
             {
-                Console.WriteLine("Select device type:");
-                Console.WriteLine("1. Playback (System Audio)");
-                Console.WriteLine("2. Recording (Microphone)");
-                var typeChoice = Console.ReadLine();
+                Console.WriteLine("Select source:");
+                Console.WriteLine("1. System Audio");
+                Console.WriteLine("2. Microphone");
+                Console.WriteLine("3. Application Process");
+                var choice = Console.ReadLine();
 
                 MMDevice device;
-                DataFlow flow;
+                DataFlow flow = DataFlow.Render;
+                uint processId = 0;
 
-                if (typeChoice == "1")
+                var enumerator = new MMDeviceEnumerator();
+
+                if (choice == "3")
                 {
-                    device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
-                    flow = DataFlow.Render;
+                    processId = AudioDeviceSelector.SelectProcess();
+                    device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
                 }
-                else
+                else if (choice == "2")
                 {
                     device = AudioDeviceSelector.SelectRecordingDeviceMMD();
                     flow = DataFlow.Capture;
                 }
+                else
+                {
+                    device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
+                }
 
                 var (ip, port) = NetworkSettings.GetServerSettings();
-                using var server = new AudioStreamingServer(ip, port, device, flow);
+                using var server = new AudioStreamingServer(ip, port, device, flow, processId);
                 server.Start();
 
                 Console.WriteLine("Server started. Press Q to stop...");
