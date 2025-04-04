@@ -81,7 +81,13 @@ namespace StreamingApplication
             {
                 int deviceIndex = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
-                string testFile = "D:\\media\\music\\halloween\\halloween.mp3";
+                string testFile = "test.mp3";
+
+                if (!File.Exists(testFile))
+                   testFile = "../../../" + testFile;
+
+                if (!File.Exists(testFile))
+                    throw new Exception($"Test file doesn't exist!");
 
                 using var reader = new AudioFileReader(testFile);
                 using var waveOut = new WaveOutEvent
