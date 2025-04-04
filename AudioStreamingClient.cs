@@ -12,7 +12,7 @@ namespace StreamingApplication
         private BufferedWaveProvider? _waveProvider;
         private bool _isConnected;
         private int _selectedDevice;
-        private MemoryStream _audioBuffer;
+        private MemoryStream? _audioBuffer;
         #endregion
 
         #region Public Methods

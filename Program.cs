@@ -1,4 +1,5 @@
-﻿using NAudio.Wave;
+﻿using NAudio.CoreAudioApi;
+using NAudio.Wave;
 using System.Runtime.InteropServices;
 
 namespace StreamingApplication
@@ -17,11 +18,12 @@ namespace StreamingApplication
                 Console.WriteLine("3. Test Playback Device");
                 Console.WriteLine("4. Exit");
                 Console.WriteLine($"5. Toggle Debug Logs (Currently: {(Logger.DebugEnabled ? "ON" : "OFF")})");
+                Console.WriteLine("6. Show Audio Devices");
 
                 switch (Console.ReadLine())
                 {
                     case "1":
-                        await ServerMode();
+                        ServerMode();
                         break;
                     case "2":
                         await ClientMode();
@@ -34,7 +36,42 @@ namespace StreamingApplication
                     case "5":
                         Logger.DebugEnabled = !Logger.DebugEnabled;
                         break;
+                    case "6":
+                        ShowAudioDevicesMenu();
+                        break;
                 }
+            }
+        }
+
+        private static void ShowAudioDevicesMenu()
+        {
+            Console.Clear();
+            Console.WriteLine("Audio Devices Information:");
+            Console.WriteLine("1. Playback Devices");
+            Console.WriteLine("2. Recording Devices");
+            Console.WriteLine("3. Back to Main Menu");
+
+            var choice = Console.ReadLine();
+            switch (choice)
+            {
+                case "1":
+                    Console.WriteLine("\n[Playback Devices via WaveOut]");
+                    AudioDeviceSelector.ListPlaybackDevicesWave();
+
+                    Console.WriteLine("\n[Playback Devices via MMDevice]");
+                    AudioDeviceSelector.ListMMDevices(DataFlow.Render);
+                    break;
+
+                case "2":
+                    Console.WriteLine("\n[Recording Devices via MMDevice]");
+                    AudioDeviceSelector.ListMMDevices(DataFlow.Capture);
+                    break;
+            }
+
+            if (choice != "3")
+            {
+                Console.WriteLine("\nPress any key to continue...");
+                Console.ReadKey();
             }
         }
 
@@ -42,7 +79,7 @@ namespace StreamingApplication
         {
             try
             {
-                int deviceIndex = AudioDeviceSelector.SelectPlaybackDeviceWave();
+                int deviceIndex = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 string testFile = "D:\\media\\music\\halloween\\halloween.mp3";
 
@@ -69,11 +106,11 @@ namespace StreamingApplication
             }
         }
 
-        static async Task ServerMode()
+        static void ServerMode()
         {
             try
             {
-                var device = AudioDeviceSelector.SelectPlaybackDevice();
+                var device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
                 var (ip, port) = NetworkSettings.GetServerSettings();
 
                 using var server = new AudioStreamingServer(ip, port, device);
@@ -95,7 +132,7 @@ namespace StreamingApplication
             try
             {
                 var (ip, port) = NetworkSettings.GetClientSettings();
-                var outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWave();
+                var outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 using var client = new AudioStreamingClient();
                 await client.ConnectAsync(ip, port, outputDevice); // Теперь передается MMDevice

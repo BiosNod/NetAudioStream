@@ -25,7 +25,7 @@ namespace StreamingApplication
             public uint dwSupport;
         }
 
-        public static int SelectPlaybackDeviceWave()
+        public static int SelectPlaybackDeviceWaveOut()
         {
             int deviceCount = waveOutGetNumDevs();
             Console.WriteLine("Available Playback Devices (WaveOut):");
@@ -41,7 +41,7 @@ namespace StreamingApplication
             return deviceIndex;
         }
 
-        public static MMDevice SelectPlaybackDevice()
+        public static MMDevice SelectPlaybackDeviceMMD()
         {
             var enumerator = new MMDeviceEnumerator();
             var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).ToList();
@@ -53,6 +53,29 @@ namespace StreamingApplication
             var result = devices[int.Parse(Console.ReadLine()!)];
             Console.WriteLine($"Selected device: {result}");
             return result;
+        }
+
+        public static void ListPlaybackDevicesWave()
+        {
+            int deviceCount = waveOutGetNumDevs();
+            Console.WriteLine("Available Playback Devices (WaveOut):");
+            for (int i = 0; i < deviceCount; i++)
+            {
+                var caps = new WAVEOUTCAPS();
+                waveOutGetDevCaps(i, ref caps, Marshal.SizeOf(caps));
+                Console.WriteLine($"{i}. {caps.szPname}");
+            }
+        }
+
+        public static void ListMMDevices(DataFlow flow)
+        {
+            var enumerator = new MMDeviceEnumerator();
+            var devices = enumerator.EnumerateAudioEndPoints(flow, DeviceState.Active).ToList();
+            Console.WriteLine($"Available {flow} Devices (MMDevice):");
+            for (int i = 0; i < devices.Count; i++)
+            {
+                Console.WriteLine($"{i}. {devices[i].FriendlyName} (ID: {devices[i].ID})");
+            }
         }
     }
 }
