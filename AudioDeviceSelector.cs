@@ -51,9 +51,10 @@ namespace StreamingApplication
             for (int i = 0; i < devices.Count; i++)
                 Console.WriteLine($"{i}. {devices[i].FriendlyName} {devices[i].ID}");
 
-            var result = devices[int.Parse(Console.ReadLine()!)];
-            Console.WriteLine($"Selected device: {result}");
-            return result;
+            var device = devices[int.Parse(Console.ReadLine()!)];
+            Console.WriteLine($"Selected device: {device}");
+            Console.WriteLine($"MixFormat: {device.AudioClient.MixFormat}");
+            return device;
         }
 
         public static void ListPlaybackDevicesWave()
@@ -88,7 +89,10 @@ namespace StreamingApplication
             for (int i = 0; i < devices.Count; i++)
                 Console.WriteLine($"{i}. {devices[i].FriendlyName}");
 
-            return devices[int.Parse(Console.ReadLine()!)];
+            var device = devices[int.Parse(Console.ReadLine()!)];
+            Console.WriteLine($"Selected device: {device}");
+            Console.WriteLine($"MixFormat: {device.AudioClient.MixFormat}");
+            return device;
         }
 
         // AudioDeviceSelector.cs
