@@ -1,4 +1,6 @@
-﻿using System.Net;
+﻿using NAudio.Wave;
+using NAudio.Lame;
+using System.Net;
 using System.Net.Sockets;
 using NAudio.CoreAudioApi;
 using NAudio.Gui;
@@ -10,9 +12,9 @@ namespace StreamingApplication
     {
         private readonly TcpListener _listener;
         private readonly int _port;
-        private readonly List<NetworkStream> _clientStreams = new List<NetworkStream>();
+        private readonly List<NetworkStream> _clientStreams = new();
         private readonly IAudioCapturer _capturer;
-        private readonly object _syncLock = new object();
+        private readonly object _syncLock = new();
         private bool _isRunning;
         private WaveFormat _serverWaveFormat;
 
@@ -23,10 +25,9 @@ namespace StreamingApplication
 
             if (flow == DataFlow.Render)
             {
-                if (processId > 0)
-                    _capturer = new ProcessAudioCapturer(inputDevice, processId);
-                else
-                    _capturer = new WasapiLoopbackCapturer(inputDevice);
+                _capturer = processId > 0
+                    ? new ProcessAudioCapturer(inputDevice, processId)
+                    : new WasapiLoopbackCapturer(inputDevice);
             }
             else
             {
@@ -89,21 +90,70 @@ namespace StreamingApplication
 
         private void OnAudioDataAvailable(byte[] data)
         {
-            try
-            {
-                var encryptedData = EncryptionHelper.Encrypt(data);
-                SendToAllClients(encryptedData);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Audio error: {ex.Message}", Logger.LogLevel.Error);
-            }
+	        try
+	        {
+		        byte[] processedData = data;
+
+		        if (AudioSettings.GetCompressionSettings().enabled)
+		        {
+			        processedData = CompressAudio(data);
+			        if (processedData == null || processedData.Length == 0)
+			        {
+				        Logger.Log("Skipping invalid compressed data", Logger.LogLevel.Warning);
+				        return;
+			        }
+		        }
+
+		        var encryptedData = EncryptionHelper.Encrypt(processedData);
+		        SendToAllClients(encryptedData);
+	        }
+	        catch (Exception ex)
+	        {
+		        Logger.Log($"Audio processing error: {ex.Message}", Logger.LogLevel.Error);
+	        }
         }
+
+		private byte[]? CompressAudio(byte[] pcmData)
+		{
+			try
+			{
+				var sourceFormat = _serverWaveFormat;
+				var targetFormat = new WaveFormat(44100, 16, 2);
+
+				Logger.Log($"Converting audio from {sourceFormat} to {targetFormat}", Logger.LogLevel.Debug);
+
+				using var inputStream = new MemoryStream(pcmData);
+				using var reader = new RawSourceWaveStream(inputStream, sourceFormat);
+				using var resampler = new MediaFoundationResampler(reader, targetFormat);
+				resampler.ResamplerQuality = 60;
+
+				using var outputStream = new MemoryStream();
+				using var writer = new LameMP3FileWriter(
+					outputStream,
+					targetFormat,
+					AudioSettings.GetCompressionSettings().bitrate);
+
+				byte[] buffer = new byte[4096];
+				int bytesRead;
+				while ((bytesRead = resampler.Read(buffer, 0, buffer.Length)) > 0)
+				{
+					writer.Write(buffer, 0, bytesRead);
+				}
+
+				writer.Close();
+				return outputStream.ToArray();
+			}
+			catch (Exception ex)
+			{
+				Logger.Log($"Compression failed: {ex.Message}", Logger.LogLevel.Error);
+				return null;
+			}
+		}
 
         private void SendToAllClients(byte[] data)
         {
             Logger.Log($"Send bytes length: {data.Length}", Logger.LogLevel.Debug);
-            List<NetworkStream> deadClients = new List<NetworkStream>();
+            List<NetworkStream> deadClients = new();
 
             lock (_syncLock)
             {
@@ -151,13 +201,6 @@ namespace StreamingApplication
             }
         }
 
-        public void Dispose()
-        {
-            Stop();
-            _capturer.Dispose();
-            GC.SuppressFinalize(this);
-        }
-
-        ~AudioStreamingServer() => Dispose();
+        public void Dispose() => Stop();
     }
 }

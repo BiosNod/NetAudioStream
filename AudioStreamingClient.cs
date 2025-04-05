@@ -100,14 +100,20 @@ namespace StreamingApplication
                 DesiredLatency = 200
             };
 
-            Console.WriteLine($"Init audio, rate: {sampleRate}, bits: {bitsPerSample}, channels: {channels}");
+            WaveFormat serverWaveFormat;
+
+
+            if (AudioSettings.GetCompressionSettings().enabled)
+            {
+
+                sampleRate = 44100;
+                bitsPerSample = 16;
+                channels = 2;
+            }
 
             // Создаем формат с IEEE Float и WAVE_FORMAT_EXTENSIBLE
-            var serverWaveFormat = new WaveFormatExtensible(
-                sampleRate,
-                bitsPerSample,
-                channels
-            );
+            Console.WriteLine($"Init audio, rate: {sampleRate}, bits: {bitsPerSample}, channels: {channels}");
+            serverWaveFormat = new WaveFormatExtensible(sampleRate, bitsPerSample, channels);
 
             //var customWaveFormat = AudioDeviceSelector.SelectPlaybackDevice().AudioClient.MixFormat;
             //Console.WriteLine($"{serverWaveFormat} vs {customWaveFormat}");
@@ -243,7 +249,36 @@ namespace StreamingApplication
 
             var decryptedData = EncryptionHelper.Decrypt(encryptedData);
             Logger.Log($"Packet decrypted", Logger.LogLevel.Debug);
-            _waveProvider!.AddSamples(decryptedData, 0, decryptedData.Length);
+
+            byte[] audioData = AudioSettings.GetCompressionSettings().enabled
+                ? DecompressAudio(decryptedData)
+                : decryptedData;
+
+            _waveProvider!.AddSamples(audioData, 0, audioData.Length);
+        }
+
+        private byte[] DecompressAudio(byte[] mp3Data)
+        {
+            try
+            {
+                using var mp3Stream = new MemoryStream(mp3Data);
+                using var reader = new Mp3FileReader(mp3Stream);
+                using var waveStream = WaveFormatConversionStream.CreatePcmStream(reader);
+                using var outputStream = new MemoryStream();
+                
+                var buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = waveStream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    outputStream.Write(buffer, 0, bytesRead);
+                }
+                return outputStream.ToArray();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Decompression failed: {ex.Message}", Logger.LogLevel.Error);
+                return Array.Empty<byte>();
+            }
         }
 
         private void AdjustBufferSize()

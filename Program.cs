@@ -16,10 +16,11 @@ namespace StreamingApplication
                 Console.WriteLine("1. Start Streaming Server");
                 Console.WriteLine("2. Connect to Streaming Server");
                 Console.WriteLine("3. Test Playback Device");
-                Console.WriteLine("4. Exit");
-                Console.WriteLine($"5. Toggle Debug Logs (Currently: {(Logger.DebugEnabled ? "ON" : "OFF")})");
+                Console.WriteLine("4. Audio Compression Settings");
+                Console.WriteLine("5. Network Settings");
                 Console.WriteLine("6. Show Audio Devices");
-                Console.WriteLine("7. Manage Network Settings");
+                Console.WriteLine($"7. Toggle Debug Logs (Currently: {(Logger.DebugEnabled ? "ON" : "OFF")})");
+                Console.WriteLine("8. Exit");
 
                 switch (Console.ReadLine())
                 {
@@ -33,16 +34,59 @@ namespace StreamingApplication
                         await TestPlaybackDevice();
                         break;
                     case "4":
-                        return;
+                        ConfigureCompression();
+                        break;
                     case "5":
-                        Logger.DebugEnabled = !Logger.DebugEnabled;
+                        ShowNetworkSettingsMenu();
                         break;
                     case "6":
                         ShowAudioDevicesMenu();
                         break;
                     case "7":
-                        ShowNetworkSettingsMenu();
+                        Logger.DebugEnabled = !Logger.DebugEnabled;
                         break;
+                    case "8":
+                        return;
+                }
+            }
+        }
+
+        static void ConfigureCompression()
+        {
+            var (enabled, bitrate) = AudioSettings.GetCompressionSettings();
+
+            while (true)
+            {
+                Console.Clear();
+                Console.WriteLine("Audio Compression Settings:");
+                Console.WriteLine($"1. Toggle Compression [{(enabled ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"2. Set Bitrate [Current: {bitrate} kbps]");
+                Console.WriteLine("3. Back to Main Menu");
+
+                switch (Console.ReadLine())
+                {
+                    case "1":
+                        enabled = !enabled;
+                        AudioSettings.SetCompression(enabled, bitrate);
+                        Console.WriteLine($"Compression {(enabled ? "Enabled" : "Disabled")}");
+                        Thread.Sleep(1000);
+                        break;
+                    case "2":
+                        Console.Write("Enter new bitrate (32-320): ");
+                        if (int.TryParse(Console.ReadLine(), out int newRate) && newRate >= 32 && newRate <= 320)
+                        {
+                            bitrate = newRate;
+                            AudioSettings.SetCompression(enabled, bitrate);
+                            Console.WriteLine($"Bitrate set to {bitrate} kbps");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Invalid bitrate! Must be 32-320");
+                        }
+                        Console.ReadKey();
+                        break;
+                    case "3":
+                        return;
                 }
             }
         }
@@ -57,7 +101,8 @@ namespace StreamingApplication
                 Console.WriteLine("2. Toggle UPnP (Current: " +
                     (NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
                 Console.WriteLine("3. Reset to Defaults");
-                Console.WriteLine("4. Back to Main Menu");
+                Console.WriteLine("4. Configure Audio Compression");
+                Console.WriteLine("5. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
@@ -83,6 +128,9 @@ namespace StreamingApplication
                         }
                         break;
                     case "4":
+                        ConfigureCompression();
+                        break;
+                    case "5":
                         return;
                 }
             }
