@@ -16,7 +16,7 @@ namespace StreamingApplication
                 Console.WriteLine("1. Start Streaming Server");
                 Console.WriteLine("2. Connect to Streaming Server");
                 Console.WriteLine("3. Test Playback Device");
-                Console.WriteLine("4. Audio Compression Settings");
+                Console.WriteLine("4. Audio Settings");
                 Console.WriteLine("5. Network Settings");
                 Console.WriteLine("6. Show Audio Devices");
                 Console.WriteLine($"7. Toggle Debug Logs (Currently: {(Logger.DebugEnabled ? "ON" : "OFF")})");
@@ -34,10 +34,10 @@ namespace StreamingApplication
                         await TestPlaybackDevice();
                         break;
                     case "4":
-                        ConfigureCompression();
+                        AudioSettings();
                         break;
                     case "5":
-                        ShowNetworkSettingsMenu();
+                        NetworkSettings();
                         break;
                     case "6":
                         ShowAudioDevicesMenu();
@@ -51,47 +51,75 @@ namespace StreamingApplication
             }
         }
 
-        static void ConfigureCompression()
+        static void AudioSettings()
         {
-            var (enabled, bitrate) = AudioSettings.GetCompressionSettings();
-
             while (true)
             {
                 Console.Clear();
                 Console.WriteLine("Audio Compression Settings:");
-                Console.WriteLine($"1. Toggle Compression [{(enabled ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"2. Set Bitrate [Current: {bitrate} kbps]");
-                Console.WriteLine("3. Back to Main Menu");
+                Console.WriteLine($"1. Toggle Compression [{(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"2. Set bitrate (will be in use only with compression) [Current: {StreamingApplication.AudioSettings._settings.Bitrate} kbps]");
+                Console.WriteLine($"3. Set server latency: {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
+                Console.WriteLine($"4. Set client latency: {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
+                Console.WriteLine($"5. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
                     case "1":
-                        enabled = !enabled;
-                        AudioSettings.SetCompression(enabled, bitrate);
-                        Console.WriteLine($"Compression {(enabled ? "Enabled" : "Disabled")}");
-                        Thread.Sleep(1000);
+                        StreamingApplication.AudioSettings._settings.EnableCompression = !StreamingApplication.AudioSettings._settings.EnableCompression;
+                        Console.WriteLine($"Compression {(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}");
+                        StreamingApplication.AudioSettings.SaveSettings();
                         break;
                     case "2":
                         Console.Write("Enter new bitrate (32-320): ");
                         if (int.TryParse(Console.ReadLine(), out int newRate) && newRate >= 32 && newRate <= 320)
                         {
-                            bitrate = newRate;
-                            AudioSettings.SetCompression(enabled, bitrate);
-                            Console.WriteLine($"Bitrate set to {bitrate} kbps");
+                            StreamingApplication.AudioSettings._settings.Bitrate = newRate;
+                            Console.WriteLine($"Bitrate set to {StreamingApplication.AudioSettings._settings.Bitrate} kbps");
+                            StreamingApplication.AudioSettings.SaveSettings();
                         }
                         else
                         {
                             Console.WriteLine("Invalid bitrate! Must be 32-320");
+                            Console.ReadKey();
                         }
-                        Console.ReadKey();
                         break;
+
                     case "3":
+                        Console.Write("Enter a new server latency (32-1000), must be less than the client latency around ~50ms: ");
+                        if (int.TryParse(Console.ReadLine(), out int newServerLatency) && newServerLatency >= 32 && newServerLatency <= 1000)
+                        {
+                            StreamingApplication.AudioSettings._settings.ServerLatency = newServerLatency;
+                            Console.WriteLine($"ServerLatency set to {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
+                            StreamingApplication.AudioSettings.SaveSettings();
+                        }
+                        else
+                        {
+                            Console.WriteLine("Invalid server latency! Must be 32-1000");
+                            Console.ReadKey();
+                        }
+                        break;
+                    case "4":
+                        Console.Write("Enter a new client latency (32-1000), must be more than the server latency around ~50ms: ");
+                        if (int.TryParse(Console.ReadLine(), out int newClientLatency) && newClientLatency >= 32 && newClientLatency <= 1000)
+                        {
+                            StreamingApplication.AudioSettings._settings.ClientLatency = newClientLatency;
+                            Console.WriteLine($"ServerLatency set to {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
+                            StreamingApplication.AudioSettings.SaveSettings();
+                        }
+                        else
+                        {
+                            Console.WriteLine("Invalid client latency! Must be 32-1000");
+                            Console.ReadKey();
+                        }
+                        break;
+                    case "5":
                         return;
                 }
             }
         }
 
-        static void ShowNetworkSettingsMenu()
+        static void NetworkSettings()
         {
             while (true)
             {
@@ -99,7 +127,7 @@ namespace StreamingApplication
                 Console.WriteLine("Network Settings Management:");
                 Console.WriteLine("1. View Current Settings");
                 Console.WriteLine("2. Toggle UPnP (Current: " +
-                    (NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
+                    (StreamingApplication.NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
                 Console.WriteLine("3. Reset to Defaults");
                 Console.WriteLine("4. Configure Audio Compression");
                 Console.WriteLine("5. Back to Main Menu");
@@ -107,13 +135,13 @@ namespace StreamingApplication
                 switch (Console.ReadLine())
                 {
                     case "1":
-                        NetworkSettings.ShowCurrentSettings();
+                        StreamingApplication.NetworkSettings.ShowCurrentSettings();
                         Console.WriteLine("\nPress any key to continue...");
                         Console.ReadKey();
                         break;
                     case "2":
-                        NetworkSettings.ToggleUPnP();
-                        Console.WriteLine($"\nUPnP is now {(NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled")}");
+                        StreamingApplication.NetworkSettings.ToggleUPnP();
+                        Console.WriteLine($"\nUPnP is now {(StreamingApplication.NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled")}");
                         Console.WriteLine("Press any key to continue...");
                         Console.ReadKey();
                         break;
@@ -121,14 +149,14 @@ namespace StreamingApplication
                         Console.WriteLine("\nAre you sure you want to reset network settings? (y/n)");
                         if (Console.ReadLine()?.ToLower() == "y")
                         {
-                            NetworkSettings.ResetSettings();
+                            StreamingApplication.NetworkSettings.ResetSettings();
                             Console.WriteLine("Settings have been reset to defaults.");
                             Console.WriteLine("Press any key to continue...");
                             Console.ReadKey();
                         }
                         break;
                     case "4":
-                        ConfigureCompression();
+                        AudioSettings();
                         break;
                     case "5":
                         return;
@@ -264,7 +292,7 @@ namespace StreamingApplication
                     device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
                 }
 
-                var (ip, port) = NetworkSettings.GetServerSettings();
+                var (ip, port) = StreamingApplication.NetworkSettings.GetServerSettings();
                 using var server = new AudioStreamingServer(ip, port, device, flow, processId);
                 server.Start();
 
@@ -283,7 +311,7 @@ namespace StreamingApplication
         {
             try
             {
-                var (ip, port) = NetworkSettings.GetClientSettings();
+                var (ip, port) = StreamingApplication.NetworkSettings.GetClientSettings();
                 var outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 using var client = new AudioStreamingClient();

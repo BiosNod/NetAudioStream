@@ -97,13 +97,13 @@ namespace StreamingApplication
             _outputDevice = new WaveOutEvent
             {
                 DeviceNumber = _selectedDevice,
-                DesiredLatency = 200
+                DesiredLatency = AudioSettings._settings.ClientLatency
             };
 
             WaveFormat serverWaveFormat;
 
 
-            if (AudioSettings.GetCompressionSettings().enabled)
+            if (AudioSettings._settings.EnableCompression)
             {
 
                 sampleRate = 44100;
@@ -119,7 +119,7 @@ namespace StreamingApplication
             //Console.WriteLine($"{serverWaveFormat} vs {customWaveFormat}");
             _waveProvider = new BufferedWaveProvider(serverWaveFormat)
             {
-                BufferDuration = TimeSpan.FromSeconds(60),
+                BufferDuration = TimeSpan.FromSeconds(5),
                 DiscardOnBufferOverflow = true
             };
 
@@ -201,9 +201,7 @@ namespace StreamingApplication
                 {
                     await ReadPacketHeader(headerBuffer);
                     int packetSize = BitConverter.ToInt32(headerBuffer, 0);
-
                     await ProcessAudioPacket(packetSize);
-                    AdjustBufferSize();
                 }
                 catch (Exception ex) when (ex is SocketException or IOException)
                 {
@@ -250,7 +248,7 @@ namespace StreamingApplication
             var decryptedData = EncryptionHelper.Decrypt(encryptedData);
             Logger.Log($"Packet decrypted", Logger.LogLevel.Debug);
 
-            byte[] audioData = AudioSettings.GetCompressionSettings().enabled
+            byte[] audioData = AudioSettings._settings.EnableCompression
                 ? DecompressAudio(decryptedData)
                 : decryptedData;
 
@@ -278,15 +276,6 @@ namespace StreamingApplication
             {
                 Logger.Log($"Decompression failed: {ex.Message}", Logger.LogLevel.Error);
                 return Array.Empty<byte>();
-            }
-        }
-
-        private void AdjustBufferSize()
-        {
-            if (_waveProvider!.BufferedDuration.TotalSeconds > 25)
-            {
-                _waveProvider.ClearBuffer();
-                Logger.Log("Buffer cleared", Logger.LogLevel.Debug);
             }
         }
         #endregion

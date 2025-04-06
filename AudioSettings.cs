@@ -6,12 +6,14 @@ namespace StreamingApplication
     public static class AudioSettings
     {
         private const string SettingsFile = "audio_settings.json";
-        private static AudioSettingsData _settings = new();
+        public static AudioSettingsData _settings = new();
 
         public class AudioSettingsData
         {
             public bool EnableCompression { get; set; } = false;
             public int Bitrate { get; set; } = 128;
+            public int ServerLatency { get; set; } = 50;
+            public int ClientLatency { get; set; } = 100;
         }
 
         static AudioSettings()
@@ -31,33 +33,22 @@ namespace StreamingApplication
             }
             catch (Exception ex)
             {
-                Logger.Log($"Failed to load audio settings: {ex.Message}", Logger.LogLevel.Warning);
+                Logger.Log($"Failed to load audio settings ({SettingsFile}): {ex.Message}", Logger.LogLevel.Warning);
             }
         }
 
-        private static void SaveSettings()
+        public static void SaveSettings()
         {
             try
             {
                 var json = JsonSerializer.Serialize(_settings);
                 File.WriteAllText(SettingsFile, json);
+                Logger.Log($"Audio settings saved to: {SettingsFile}", Logger.LogLevel.Info);
             }
             catch (Exception ex)
             {
                 Logger.Log($"Failed to save audio settings: {ex.Message}", Logger.LogLevel.Error);
             }
-        }
-
-        public static void SetCompression(bool enable, int bitrate = 128)
-        {
-            _settings.EnableCompression = enable;
-            _settings.Bitrate = bitrate;
-            SaveSettings();
-        }
-
-        public static (bool enabled, int bitrate) GetCompressionSettings()
-        {
-            return (_settings.EnableCompression, _settings.Bitrate);
         }
     }
 }

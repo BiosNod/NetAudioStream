@@ -18,6 +18,11 @@ namespace StreamingApplication
         private bool _isRunning;
         private WaveFormat _serverWaveFormat;
 
+        private MemoryStream _audioBuffer = new MemoryStream();
+        private readonly object _bufferLock = new object();
+        private Timer _sendTimer;
+        private bool _processing = false;
+
         public AudioStreamingServer(string ip, int port, MMDevice inputDevice, DataFlow flow, uint processId = 0)
         {
             _port = port;
@@ -36,6 +41,8 @@ namespace StreamingApplication
 
             _serverWaveFormat = inputDevice.AudioClient.MixFormat;
             _capturer.DataAvailable += OnAudioDataAvailable;
+            var interval = AudioSettings._settings.ServerLatency;
+            _sendTimer = new Timer(SendBufferedData, null, interval, interval);
         }
 
         public async void Start()
@@ -90,30 +97,63 @@ namespace StreamingApplication
 
         private void OnAudioDataAvailable(byte[] data)
         {
-	        try
-	        {
-		        byte[] processedData = data;
-
-		        if (AudioSettings.GetCompressionSettings().enabled)
-		        {
-			        processedData = CompressAudio(data);
-			        if (processedData == null || processedData.Length == 0)
-			        {
-				        Logger.Log("Skipping invalid compressed data", Logger.LogLevel.Warning);
-				        return;
-			        }
-		        }
-
-		        var encryptedData = EncryptionHelper.Encrypt(processedData);
-		        SendToAllClients(encryptedData);
-	        }
-	        catch (Exception ex)
-	        {
-		        Logger.Log($"Audio processing error: {ex.Message}", Logger.LogLevel.Error);
-	        }
+            lock (_bufferLock)
+            {
+                _audioBuffer.Write(data, 0, data.Length);
+            }
         }
 
-		private byte[]? CompressAudio(byte[] pcmData)
+        private void SendBufferedData(object state)
+        {
+            if (_processing) return;
+            _processing = true;
+
+            try
+            {
+                byte[] bufferedData;
+                lock (_bufferLock)
+                {
+                    if (_audioBuffer.Length == 0) return;
+
+                    bufferedData = _audioBuffer.ToArray();
+                    _audioBuffer.SetLength(0); // Очищаем буфер
+                }
+
+                ProcessAndSendData(bufferedData);
+            }
+            finally
+            {
+                _processing = false;
+            }
+        }
+
+        // Вынесенная логика обработки данных
+        private void ProcessAndSendData(byte[] data)
+        {
+            try
+            {
+                byte[] processedData = data;
+
+                if (AudioSettings._settings.EnableCompression)
+                {
+                    processedData = CompressAudio(data);
+                    if (processedData == null || processedData.Length == 0)
+                    {
+                        Logger.Log("Skipping invalid compressed data", Logger.LogLevel.Warning);
+                        return;
+                    }
+                }
+
+                var encryptedData = EncryptionHelper.Encrypt(processedData);
+                SendToAllClients(encryptedData);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Audio processing error: {ex.Message}", Logger.LogLevel.Error);
+            }
+        }
+
+        private byte[]? CompressAudio(byte[] pcmData)
 		{
 			try
 			{
@@ -128,10 +168,7 @@ namespace StreamingApplication
 				resampler.ResamplerQuality = 60;
 
 				using var outputStream = new MemoryStream();
-				using var writer = new LameMP3FileWriter(
-					outputStream,
-					targetFormat,
-					AudioSettings.GetCompressionSettings().bitrate);
+				using var writer = new LameMP3FileWriter(outputStream, targetFormat, AudioSettings._settings.Bitrate);
 
 				byte[] buffer = new byte[4096];
 				int bytesRead;
@@ -184,6 +221,10 @@ namespace StreamingApplication
             _isRunning = false;
             _capturer.Stop();
             _listener.Stop();
+            _sendTimer?.Dispose();
+
+            // Отправляем оставшиеся данные
+            SendBufferedData(null);
 
             // Удаление проброски порта
             if (_port > 0)
