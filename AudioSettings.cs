@@ -14,6 +14,8 @@ namespace StreamingApplication
             public int Bitrate { get; set; } = 128;
             public int ServerLatency { get; set; } = 50;
             public int ClientLatency { get; set; } = 100;
+            public bool EnableVolumeNormalization { get; set; } = true;
+            public int VolumeNormalizationLevel { get; set; } = 100;
         }
 
         static AudioSettings()

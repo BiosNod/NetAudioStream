@@ -61,7 +61,9 @@ namespace StreamingApplication
                 Console.WriteLine($"2. Set bitrate (will be in use only with compression) [Current: {StreamingApplication.AudioSettings._settings.Bitrate} kbps]");
                 Console.WriteLine($"3. Set server latency: {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
                 Console.WriteLine($"4. Set client latency: {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
-                Console.WriteLine($"5. Back to Main Menu");
+                Console.WriteLine($"5. Toggle Normalization [{(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"6. Set Normalization Level [Current: {StreamingApplication.AudioSettings._settings.VolumeNormalizationLevel}%]");
+                Console.WriteLine($"7. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
@@ -113,7 +115,23 @@ namespace StreamingApplication
                             Console.ReadKey();
                         }
                         break;
+                    
                     case "5":
+                        StreamingApplication.AudioSettings._settings.EnableVolumeNormalization = !StreamingApplication.AudioSettings._settings.EnableVolumeNormalization;
+                        Console.WriteLine($"Normalization {(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}");
+                        StreamingApplication.AudioSettings.SaveSettings();
+                        break;
+                    case "6":
+                        Console.Write("Enter new normalization level (0-150%): ");
+                        if (int.TryParse(Console.ReadLine(), out int level) && level >= 0 && level <= 150)
+                        {
+                            StreamingApplication.AudioSettings._settings.VolumeNormalizationLevel = level;
+                            StreamingApplication.AudioSettings.SaveSettings();
+                            Console.WriteLine($"Normalization level set to {level}%");
+                        }
+                        else Console.WriteLine("Invalid value! Use 0-150");
+                        break;
+                    case "7":
                         return;
                 }
             }
@@ -307,19 +325,54 @@ namespace StreamingApplication
         {
             try
             {
+                Console.Clear();
                 var (ip, port) = StreamingApplication.NetworkSettings.GetClientSettings();
-                var outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
+                int outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 using var client = new AudioStreamingClient();
+
+                void ShowClientControls()
+                {
+                    Console.WriteLine("\nClient controls:");
+                    Console.WriteLine("Q - Stop playback and disconnect");
+                    Console.WriteLine("V - Adjust volume during playback\n");
+                }
+
+                // Добавляем обработчики событий
+                client.OnConnected += ShowClientControls;
+
+                client.OnDisconnected += reason =>
+                    Logger.Log($"Disconnected: {reason}", Logger.LogLevel.Warning);
+
+                client.OnReconnecting += attempt =>
+                    Logger.Log($"Reconnection attempt {attempt}", Logger.LogLevel.Info);
+
+                // Запускаем подключение
                 await client.ConnectAsync(ip, port, outputDevice);
 
-                Console.WriteLine("Client started. Press Q to stop...");
-                while (Console.ReadKey(true).Key != ConsoleKey.Q) { }
-                client.Disconnect();
+                // Основной цикл ожидания
+                while (true)
+                {
+                    var key = Console.ReadKey(intercept: true);
+                    if (key.Key == ConsoleKey.Q)
+                    {
+                        client.Disconnect();
+                        Console.WriteLine("\nDisconnecting...");
+                        await Task.Delay(500);
+                        break;
+                    }
+                    else if (key.Key == ConsoleKey.V)
+                    {
+                        client.ShowVolumeControlMenu();
+                    }
+                    else
+                        ShowClientControls();
+                }
             }
             catch (Exception ex)
             {
                 Logger.Log($"Client error: {ex.Message}", Logger.LogLevel.Error);
+                Console.WriteLine("Press any key to continue...");
                 Console.ReadKey();
             }
         }

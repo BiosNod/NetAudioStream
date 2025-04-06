@@ -2,6 +2,7 @@
 using System.Net.Sockets;
 using Concentus.Structs;
 using Concentus.Enums;
+using System.Text.RegularExpressions;
 
 
 namespace StreamingApplication
@@ -25,6 +26,7 @@ namespace StreamingApplication
         public event Action? OnConnected;
         public event Action<string>? OnDisconnected;
         public event Action<string>? OnReconnecting;
+
 
         #region Public Methods
         public async Task ConnectAsync(string ip, int port, int outputDevice)
@@ -180,6 +182,33 @@ namespace StreamingApplication
             });
         }
 
+        public void ShowVolumeControlMenu()
+        {
+            Console.WriteLine("\n=== Volume Control ===");
+            Console.WriteLine($"Current volume: {AudioSettings._settings.VolumeNormalizationLevel}");
+            Console.WriteLine("Enter volume (0-200) or 'd' to disable control:");
+            Console.Write("> ");
+            var input = Console.ReadLine()?.Trim().ToLower();
+
+            if (input == "d" || input == "D")
+            {
+                AudioSettings._settings.EnableVolumeNormalization = false;
+                AudioSettings.SaveSettings();
+                Console.WriteLine("Volume control disabled\n");
+            }
+            else if (int.TryParse(input, out int vol) && vol >= 0 && vol <= 200)
+            {
+                AudioSettings._settings.VolumeNormalizationLevel = vol;
+                AudioSettings._settings.EnableVolumeNormalization = true;
+                AudioSettings.SaveSettings();
+                Console.WriteLine($"Volume set to {vol}%\n");
+            }
+            else
+            {
+                Console.WriteLine("Invalid input! Use 0-200 or 'd', skip, you can try again using V\n");
+            }
+        }
+
         private void HandleDisconnection()
         {
             if (!_isConnected) return;
@@ -256,7 +285,82 @@ namespace StreamingApplication
                 ? DecompressAudio(decryptedData)
                 : decryptedData;
 
+            if (AudioSettings._settings.EnableVolumeNormalization && AudioSettings._settings.VolumeNormalizationLevel != 100)
+            {
+                audioData = AdjustVolume(audioData, AudioSettings._settings.VolumeNormalizationLevel);
+            }
+
             _waveProvider!.AddSamples(audioData, 0, audioData.Length);
+        }
+
+        private byte[] AdjustVolume(byte[] audioData, int volumePercent)
+        {
+            float volume = volumePercent / 100f;
+            if (volume == 1.0f || audioData.Length == 0)
+                return audioData;
+
+            try
+            {
+                var format = _waveProvider?.WaveFormat;
+                if (format == null)
+                {
+                    Logger.Log("Wave format not available", Logger.LogLevel.Warning);
+                    return audioData;
+                }
+
+                // Логируем полную информацию о формате
+                Logger.Log($"Adjusting volume for format: {format}, Encoding: {format.Encoding}, Channels: {format.Channels}, Bits: {format.BitsPerSample}",
+                         Logger.LogLevel.Debug);
+
+                byte[] adjustedData = new byte[audioData.Length];
+
+                // Для всех 32-bit float форматов (включая WAVE_FORMAT_EXTENSIBLE)
+                if (format.BitsPerSample == 32 &&
+                   (format.Encoding == WaveFormatEncoding.IeeeFloat ||
+                    format.Encoding == WaveFormatEncoding.Extensible))
+                {
+                    int sampleSize = 4; // 32-bit = 4 bytes
+                    int sampleCount = audioData.Length / sampleSize;
+
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        int offset = i * sampleSize;
+                        float sample = BitConverter.ToSingle(audioData, offset);
+                        sample *= volume;
+                        sample = Math.Max(-1.0f, Math.Min(1.0f, sample));
+                        byte[] bytes = BitConverter.GetBytes(sample);
+                        Buffer.BlockCopy(bytes, 0, adjustedData, offset, sampleSize);
+                    }
+                }
+                // Для 16-bit PCM
+                else if (format.BitsPerSample == 16)
+                {
+                    int sampleSize = 2; // 16-bit = 2 bytes
+                    int sampleCount = audioData.Length / sampleSize;
+
+                    for (int i = 0; i < sampleCount; i++)
+                    {
+                        int offset = i * sampleSize;
+                        short sample = BitConverter.ToInt16(audioData, offset);
+                        float adjusted = sample * volume;
+                        adjusted = Math.Max(short.MinValue, Math.Min(short.MaxValue, adjusted));
+                        byte[] bytes = BitConverter.GetBytes((short)adjusted);
+                        Buffer.BlockCopy(bytes, 0, adjustedData, offset, sampleSize);
+                    }
+                }
+                else
+                {
+                    Logger.Log($"Unsupported format for volume adjustment: {format}", Logger.LogLevel.Warning);
+                    return audioData;
+                }
+
+                return adjustedData;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Volume adjustment error: {ex.Message}", Logger.LogLevel.Error);
+                return audioData;
+            }
         }
 
         private byte[] DecompressAudio(byte[] opusData)
