@@ -129,8 +129,7 @@ namespace StreamingApplication
                 Console.WriteLine("2. Toggle UPnP (Current: " +
                     (StreamingApplication.NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
                 Console.WriteLine("3. Reset to Defaults");
-                Console.WriteLine("4. Configure Audio Compression");
-                Console.WriteLine("5. Back to Main Menu");
+                Console.WriteLine("4. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
@@ -156,9 +155,6 @@ namespace StreamingApplication
                         }
                         break;
                     case "4":
-                        AudioSettings();
-                        break;
-                    case "5":
                         return;
                 }
             }
