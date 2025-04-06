@@ -1,5 +1,8 @@
 ﻿using NAudio.Wave;
 using System.Net.Sockets;
+using Concentus.Structs;
+using Concentus.Enums;
+
 
 namespace StreamingApplication
 {
@@ -256,26 +259,69 @@ namespace StreamingApplication
             _waveProvider!.AddSamples(audioData, 0, audioData.Length);
         }
 
-        private byte[] DecompressAudio(byte[] mp3Data)
+        private byte[] DecompressAudio(byte[] opusData)
         {
             try
             {
-                using var mp3Stream = new MemoryStream(mp3Data);
-                using var reader = new Mp3FileReader(mp3Stream);
-                using var waveStream = WaveFormatConversionStream.CreatePcmStream(reader);
+                using var opusStream = new MemoryStream(opusData);
                 using var outputStream = new MemoryStream();
-                
-                var buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = waveStream.Read(buffer, 0, buffer.Length)) > 0)
+
+                // Читаем информацию формата из заголовка
+                BinaryReader reader = new BinaryReader(opusStream);
+                int sampleRate = reader.ReadInt32();
+                int channels = reader.ReadInt32();
+
+                // Создаем декодер Opus
+                var decoder = new OpusDecoder(sampleRate, channels);
+
+                // Размер фрейма
+                int frameSize = sampleRate / 50; // 20мс фрейм
+
+                // Буферы для данных
+                short[] pcmBuffer = new short[frameSize * channels];
+
+                // Читаем и декодируем данные Opus
+                while (opusStream.Position < opusStream.Length)
                 {
-                    outputStream.Write(buffer, 0, bytesRead);
+                    try
+                    {
+                        // Читаем размер пакета
+                        int packetLength = reader.ReadInt32();
+
+                        if (packetLength <= 0 || packetLength > 1275) // Проверка валидности размера пакета
+                            break;
+
+                        // Читаем пакет
+                        byte[] opusPacket = reader.ReadBytes(packetLength);
+
+                        // Декодируем пакет
+                        int samplesDecoded = decoder.Decode(opusPacket, 0, packetLength, pcmBuffer, 0, frameSize, false);
+
+                        if (samplesDecoded > 0)
+                        {
+                            // Конвертируем short samples в байты
+                            byte[] byteBuffer = new byte[samplesDecoded * channels * 2]; // 16 бит на сэмпл
+                            for (int i = 0; i < samplesDecoded * channels; i++)
+                            {
+                                byte[] sampleBytes = BitConverter.GetBytes(pcmBuffer[i]);
+                                byteBuffer[i * 2] = sampleBytes[0];
+                                byteBuffer[i * 2 + 1] = sampleBytes[1];
+                            }
+
+                            outputStream.Write(byteBuffer, 0, byteBuffer.Length);
+                        }
+                    }
+                    catch (EndOfStreamException)
+                    {
+                        break; // Достигнут конец потока
+                    }
                 }
+
                 return outputStream.ToArray();
             }
             catch (Exception ex)
             {
-                Logger.Log($"Decompression failed: {ex.Message}", Logger.LogLevel.Error);
+                Logger.Log($"Opus decompression failed: {ex.Message}", Logger.LogLevel.Error);
                 return Array.Empty<byte>();
             }
         }

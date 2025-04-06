@@ -1,10 +1,10 @@
 ﻿using NAudio.Wave;
-using NAudio.Lame;
 using System.Net;
 using System.Net.Sockets;
 using NAudio.CoreAudioApi;
-using NAudio.Gui;
-using NAudio.Wave;
+using Concentus.Structs;
+using Concentus.Enums;
+
 
 namespace StreamingApplication
 {
@@ -156,38 +156,70 @@ namespace StreamingApplication
         }
 
         private byte[]? CompressAudio(byte[] pcmData)
-		{
-			try
-			{
-				var sourceFormat = _serverWaveFormat;
-				var targetFormat = new WaveFormat(44100, 16, 2);
+        {
+            try
+            {
+                var sourceFormat = _serverWaveFormat;
+                var targetFormat = new WaveFormat(48000, 16, 2); // Opus лучше работает с частотой 48kHz
 
-				Logger.Log($"Converting audio from {sourceFormat} to {targetFormat}", Logger.LogLevel.Debug);
+                Logger.Log($"Converting audio from {sourceFormat} to {targetFormat} using Opus", Logger.LogLevel.Debug);
 
-				using var inputStream = new MemoryStream(pcmData);
-				using var reader = new RawSourceWaveStream(inputStream, sourceFormat);
-				using var resampler = new MediaFoundationResampler(reader, targetFormat);
-				resampler.ResamplerQuality = 60;
+                using var inputStream = new MemoryStream(pcmData);
+                using var reader = new RawSourceWaveStream(inputStream, sourceFormat);
+                using var resampler = new MediaFoundationResampler(reader, targetFormat);
+                resampler.ResamplerQuality = 60;
 
-				using var outputStream = new MemoryStream();
-				using var writer = new LameMP3FileWriter(outputStream, targetFormat, AudioSettings._settings.Bitrate);
+                using var outputStream = new MemoryStream();
 
-				byte[] buffer = new byte[4096];
-				int bytesRead;
-				while ((bytesRead = resampler.Read(buffer, 0, buffer.Length)) > 0)
-				{
-					writer.Write(buffer, 0, bytesRead);
-				}
+                // Создаем кодировщик Opus
+                var encoder = new OpusEncoder(targetFormat.SampleRate, targetFormat.Channels, OpusApplication.OPUS_APPLICATION_AUDIO);
 
-				writer.Close();
-				return outputStream.ToArray();
-			}
-			catch (Exception ex)
-			{
-				Logger.Log($"Compression failed: {ex.Message}", Logger.LogLevel.Error);
-				return null;
-			}
-		}
+                // Настройка битрейта (в бит/сек)
+                encoder.Bitrate = AudioSettings._settings.Bitrate * 1000; // Переводим из кбит/с в бит/с
+
+                // Размер фрейма (20 мс аудио при 48кГц)
+                int frameSize = targetFormat.SampleRate / 50; // 20мс фрейм
+
+                // Буферы для PCM данных и кодированных данных
+                short[] pcmBuffer = new short[frameSize * targetFormat.Channels]; // Стерео
+                byte[] byteBuffer = new byte[pcmBuffer.Length * 2];  // 16 бит на сэмпл = 2 байта
+                byte[] opusPacket = new byte[1275]; // Максимальный размер Opus пакета
+
+                int bytesRead;
+
+                // Сначала запишем заголовок с информацией о формате
+                BinaryWriter writer = new BinaryWriter(outputStream);
+                writer.Write(targetFormat.SampleRate);
+                writer.Write(targetFormat.Channels);
+
+                while ((bytesRead = resampler.Read(byteBuffer, 0, byteBuffer.Length)) > 0)
+                {
+                    // Конвертируем байты в short samples для Opus
+                    int shortSamplesCount = Math.Min(pcmBuffer.Length, bytesRead / 2);
+                    for (int i = 0; i < shortSamplesCount; i++)
+                    {
+                        pcmBuffer[i] = BitConverter.ToInt16(byteBuffer, i * 2);
+                    }
+
+                    // Кодируем фрейм в Opus
+                    int packetLength = encoder.Encode(pcmBuffer, 0, frameSize, opusPacket, 0, opusPacket.Length);
+
+                    if (packetLength > 0)
+                    {
+                        // Записываем размер пакета и сам пакет
+                        writer.Write(packetLength);
+                        writer.Write(opusPacket, 0, packetLength);
+                    }
+                }
+
+                return outputStream.ToArray();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Opus compression failed: {ex.Message}", Logger.LogLevel.Error);
+                return null;
+            }
+        }
 
         private void SendToAllClients(byte[] data)
         {
