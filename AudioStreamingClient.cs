@@ -183,6 +183,7 @@ namespace StreamingApplication
 
             _isConnected = false;
             OnDisconnected?.Invoke("Connection lost");
+            Logger.Log($"Disconnected from server {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
 
             if (!(_cts?.IsCancellationRequested ?? true))
             {

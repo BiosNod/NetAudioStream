@@ -95,7 +95,6 @@ namespace StreamingApplication
             return device;
         }
 
-        // AudioDeviceSelector.cs
         public static uint SelectProcess()
         {
             using var deviceEnumerator = new MMDeviceEnumerator();

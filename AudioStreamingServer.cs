@@ -57,6 +57,7 @@ namespace StreamingApplication
 
             _capturer.Start();
             _listener.Start();
+            Logger.Log($"Server started on {_listener.LocalEndpoint}", Logger.LogLevel.Info);
             Task.Run(AcceptClientsLoop);
         }
 
@@ -75,6 +76,7 @@ namespace StreamingApplication
                     lock (_syncLock)
                     {
                         _clientStreams.Add(stream);
+                        Logger.Log($"Client connected from {client.Client.RemoteEndPoint?.ToString()} (Total clients: {_clientStreams.Count})", Logger.LogLevel.Info);
                     }
                 }
                 catch (ObjectDisposedException) { }
@@ -212,6 +214,7 @@ namespace StreamingApplication
                 {
                     _clientStreams.Remove(dead);
                     dead.Dispose();
+                    Logger.Log($"Client disconnected (Remaining: {_clientStreams.Count})", Logger.LogLevel.Info);
                 }
             }
         }
