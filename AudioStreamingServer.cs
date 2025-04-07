@@ -129,7 +129,6 @@ namespace StreamingApplication
             }
         }
 
-        // Вынесенная логика обработки данных
         private void ProcessAndSendData(byte[] data)
         {
             try
@@ -155,69 +154,86 @@ namespace StreamingApplication
             }
         }
 
-        private byte[]? CompressAudio(byte[] pcmData)
+        public byte[]? CompressAudio(byte[] pcmData)
         {
+            byte[] byteBuffer = null;
+            short[] pcmBuffer = null;
+            byte[] opusPacket = null;
+
             try
             {
-                var sourceFormat = _serverWaveFormat;
-                var targetFormat = new WaveFormat(48000, 16, 2); // Opus лучше работает с частотой 48kHz
-
-                Logger.Log($"Converting audio from {sourceFormat} to {targetFormat} using Opus", Logger.LogLevel.Debug);
+                var targetFormat = new WaveFormat(48000, 16, 2);
 
                 using var inputStream = new MemoryStream(pcmData);
-                using var reader = new RawSourceWaveStream(inputStream, sourceFormat);
-                using var resampler = new MediaFoundationResampler(reader, targetFormat);
-                resampler.ResamplerQuality = 60;
-
-                using var outputStream = new MemoryStream();
-
-                // Создаем кодировщик Opus
-                var encoder = new OpusEncoder(targetFormat.SampleRate, targetFormat.Channels, OpusApplication.OPUS_APPLICATION_AUDIO);
-
-                // Настройка битрейта (в бит/сек)
-                encoder.Bitrate = AudioSettings._settings.Bitrate * 1000; // Переводим из кбит/с в бит/с
-
-                // Размер фрейма (20 мс аудио при 48кГц)
-                int frameSize = targetFormat.SampleRate / 50; // 20мс фрейм
-
-                // Буферы для PCM данных и кодированных данных
-                short[] pcmBuffer = new short[frameSize * targetFormat.Channels]; // Стерео
-                byte[] byteBuffer = new byte[pcmBuffer.Length * 2];  // 16 бит на сэмпл = 2 байта
-                byte[] opusPacket = new byte[1275]; // Максимальный размер Opus пакета
-
-                int bytesRead;
-
-                // Сначала запишем заголовок с информацией о формате
-                BinaryWriter writer = new BinaryWriter(outputStream);
-                writer.Write(targetFormat.SampleRate);
-                writer.Write(targetFormat.Channels);
-
-                while ((bytesRead = resampler.Read(byteBuffer, 0, byteBuffer.Length)) > 0)
+                using var reader = new RawSourceWaveStream(inputStream, _serverWaveFormat);
+                using var resampler = new MediaFoundationResampler(reader, targetFormat)
                 {
-                    // Конвертируем байты в short samples для Opus
-                    int shortSamplesCount = Math.Min(pcmBuffer.Length, bytesRead / 2);
-                    for (int i = 0; i < shortSamplesCount; i++)
-                    {
-                        pcmBuffer[i] = BitConverter.ToInt16(byteBuffer, i * 2);
-                    }
+                    ResamplerQuality = 30
+                };
 
-                    // Кодируем фрейм в Opus
-                    int packetLength = encoder.Encode(pcmBuffer, 0, frameSize, opusPacket, 0, opusPacket.Length);
+                var encoder = new OpusEncoder(targetFormat.SampleRate, targetFormat.Channels, OpusApplication.OPUS_APPLICATION_AUDIO)
+                {
+                    Bitrate = AudioSettings._settings.Bitrate * 1000,
+                    Complexity = 1,
+                    UseInbandFEC = false,
+                    UseDTX = false
+                };
 
-                    if (packetLength > 0)
+                int frameSize = targetFormat.SampleRate / 50;
+                int frameByteSize = frameSize * targetFormat.Channels * 2;
+
+                byteBuffer = BufferPool._bufferPool.RentByteBuffer(frameByteSize * 4);
+                pcmBuffer = BufferPool._bufferPool.RentShortBuffer(frameSize * targetFormat.Channels * 4);
+                opusPacket = BufferPool._bufferPool.RentByteBuffer(1275 * 4);
+
+                using var memoryStream = new MemoryStream();
+                using (var outputStream = new BufferedStream(memoryStream, 65536))
+                {
+                    var writer = new BinaryWriter(outputStream);
+                    writer.Write(targetFormat.SampleRate);
+                    writer.Write(targetFormat.Channels);
+
+                    int bytesRead;
+                    while ((bytesRead = resampler.Read(byteBuffer, 0, byteBuffer.Length)) > 0)
                     {
-                        // Записываем размер пакета и сам пакет
-                        writer.Write(packetLength);
-                        writer.Write(opusPacket, 0, packetLength);
+                        int samplesCount = bytesRead / 2;
+                        Buffer.BlockCopy(byteBuffer, 0, pcmBuffer, 0, bytesRead);
+
+                        int framesProcessed = samplesCount / (frameSize * targetFormat.Channels);
+                        for (int i = 0; i < framesProcessed; i++)
+                        {
+                            int offset = i * frameSize * targetFormat.Channels;
+                            int packetLength = encoder.Encode(
+                                pcmBuffer,
+                                offset,
+                                frameSize,
+                                opusPacket,
+                                i * 1275,
+                                opusPacket.Length - i * 1275
+                            );
+
+                            if (packetLength > 0)
+                            {
+                                writer.Write(packetLength);
+                                writer.Write(opusPacket, i * 1275, packetLength);
+                            }
+                        }
                     }
+                    outputStream.Flush();
                 }
 
-                return outputStream.ToArray();
+                return memoryStream.ToArray();
             }
             catch (Exception ex)
             {
                 Logger.Log($"Opus compression failed: {ex.Message}", Logger.LogLevel.Error);
                 return null;
+            }
+            finally
+            {
+                if (byteBuffer != null) BufferPool._bufferPool.Return(byteBuffer);
+                if (pcmBuffer != null) BufferPool._bufferPool.Return(pcmBuffer);
+                if (opusPacket != null) BufferPool._bufferPool.Return(opusPacket);
             }
         }
 

@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Concentus.Structs;
 using Concentus.Enums;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 
 
 namespace StreamingApplication
@@ -363,70 +364,73 @@ namespace StreamingApplication
             }
         }
 
-        private byte[] DecompressAudio(byte[] opusData)
+        public byte[] DecompressAudio(byte[] opusData)
         {
+            byte[] opusPacket = null;
+            short[] pcmBuffer = null;
+            byte[] byteBuffer = null;
+
             try
             {
                 using var opusStream = new MemoryStream(opusData);
-                using var outputStream = new MemoryStream();
+                using var reader = new BinaryReader(opusStream);
 
-                // Читаем информацию формата из заголовка
-                BinaryReader reader = new BinaryReader(opusStream);
                 int sampleRate = reader.ReadInt32();
                 int channels = reader.ReadInt32();
 
-                // Создаем декодер Opus
                 var decoder = new OpusDecoder(sampleRate, channels);
+                int frameSize = sampleRate / 50;
 
-                // Размер фрейма
-                int frameSize = sampleRate / 50; // 20мс фрейм
+                opusPacket = BufferPool._bufferPool.RentByteBuffer(1275 * 4);
+                pcmBuffer = BufferPool._bufferPool.RentShortBuffer(frameSize * channels * 4);
+                byteBuffer = BufferPool._bufferPool.RentByteBuffer(frameSize * channels * 2 * 4);
 
-                // Буферы для данных
-                short[] pcmBuffer = new short[frameSize * channels];
-
-                // Читаем и декодируем данные Opus
-                while (opusStream.Position < opusStream.Length)
+                using var memoryStream = new MemoryStream();
+                using (var outputStream = new BufferedStream(memoryStream, 65536))
                 {
-                    try
+                    while (opusStream.Position < opusStream.Length)
                     {
-                        // Читаем размер пакета
                         int packetLength = reader.ReadInt32();
-
-                        if (packetLength <= 0 || packetLength > 1275) // Проверка валидности размера пакета
+                        if (packetLength <= 0 || packetLength > 1275)
+                        {
+                            Logger.Log($"Wrong packet length: {packetLength}", Logger.LogLevel.Error);
                             break;
+                        }
 
-                        // Читаем пакет
-                        byte[] opusPacket = reader.ReadBytes(packetLength);
+                        reader.Read(opusPacket, 0, packetLength);
 
-                        // Декодируем пакет
-                        int samplesDecoded = decoder.Decode(opusPacket, 0, packetLength, pcmBuffer, 0, frameSize, false);
+                        int samplesDecoded = decoder.Decode(
+                            opusPacket,
+                            0,
+                            packetLength,
+                            pcmBuffer,
+                            0,
+                            frameSize,
+                            false
+                        );
 
                         if (samplesDecoded > 0)
                         {
-                            // Конвертируем short samples в байты
-                            byte[] byteBuffer = new byte[samplesDecoded * channels * 2]; // 16 бит на сэмпл
-                            for (int i = 0; i < samplesDecoded * channels; i++)
-                            {
-                                byte[] sampleBytes = BitConverter.GetBytes(pcmBuffer[i]);
-                                byteBuffer[i * 2] = sampleBytes[0];
-                                byteBuffer[i * 2 + 1] = sampleBytes[1];
-                            }
-
-                            outputStream.Write(byteBuffer, 0, byteBuffer.Length);
+                            int bytesToCopy = samplesDecoded * channels * 2;
+                            Buffer.BlockCopy(pcmBuffer, 0, byteBuffer, 0, bytesToCopy);
+                            outputStream.Write(byteBuffer, 0, bytesToCopy);
                         }
                     }
-                    catch (EndOfStreamException)
-                    {
-                        break; // Достигнут конец потока
-                    }
+                    outputStream.Flush();
                 }
 
-                return outputStream.ToArray();
+                return memoryStream.ToArray();
             }
             catch (Exception ex)
             {
                 Logger.Log($"Opus decompression failed: {ex.Message}", Logger.LogLevel.Error);
                 return Array.Empty<byte>();
+            }
+            finally
+            {
+                if (opusPacket != null) BufferPool._bufferPool.Return(opusPacket);
+                if (pcmBuffer != null) BufferPool._bufferPool.Return(pcmBuffer);
+                if (byteBuffer != null) BufferPool._bufferPool.Return(byteBuffer);
             }
         }
         #endregion
