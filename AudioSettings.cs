@@ -10,10 +10,9 @@ namespace StreamingApplication
 
         public class AudioSettingsData
         {
-            public bool EnableCompression { get; set; } = false;
-            public int Bitrate { get; set; } = 128;
+            public bool EnableCompression { get; set; } = true;
             public int ServerLatency { get; set; } = 10;
-            public int ClientLatency { get; set; } = 30;
+            public int ClientLatency { get; set; } = 60;
             public bool EnableVolumeNormalization { get; set; } = true;
             public int VolumeNormalizationLevel { get; set; } = 100;
         }

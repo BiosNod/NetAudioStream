@@ -57,13 +57,12 @@ namespace StreamingApplication
             {
                 Console.Clear();
                 Console.WriteLine("Audio Compression Settings:");
-                Console.WriteLine($"1. Toggle Compression [{(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"2. Set bitrate (will be in use only with compression) [Current: {StreamingApplication.AudioSettings._settings.Bitrate} kbps]");
-                Console.WriteLine($"3. Set server latency: {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
-                Console.WriteLine($"4. Set client latency: {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
-                Console.WriteLine($"5. Toggle Normalization [{(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"6. Set Normalization Level [Current: {StreamingApplication.AudioSettings._settings.VolumeNormalizationLevel}%]");
-                Console.WriteLine($"7. Back to Main Menu");
+                Console.WriteLine($"1. Toggle Compression (Fastest GZIP reduce 3 times) [{(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"2. Set server latency: {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
+                Console.WriteLine($"3. Set client latency: {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
+                Console.WriteLine($"4. Toggle Normalization [{(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"5. Set Normalization Level [Current: {StreamingApplication.AudioSettings._settings.VolumeNormalizationLevel}%]");
+                Console.WriteLine($"6. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
@@ -74,26 +73,9 @@ namespace StreamingApplication
                         break;
 
                     case "2":
-                        var bitrateMin = 32;
-                        var bitrateMax = 320;
-                        Console.Write($"Enter new bitrate ({bitrateMin}-{bitrateMax}): ");
-                        if (int.TryParse(Console.ReadLine(), out int newRate) && newRate >= bitrateMin && newRate <= bitrateMax)
-                        {
-                            StreamingApplication.AudioSettings._settings.Bitrate = newRate;
-                            Console.WriteLine($"Bitrate set to {StreamingApplication.AudioSettings._settings.Bitrate} kbps");
-                            StreamingApplication.AudioSettings.SaveSettings();
-                        }
-                        else
-                        {
-                            Console.WriteLine("Invalid bitrate! Must be 32-320");
-                            Console.ReadKey();
-                        }
-                        break;
-
-                    case "3":
                         var latencyServerMin = 10;
                         var latencyServerMax = 1000;
-                        Console.Write($"Enter a new server latency ({latencyServerMin}-{latencyServerMax}), must be less than the client latency around ~50ms: ");
+                        Console.Write($"Enter a new server latency ({latencyServerMin}-{latencyServerMax}), must be less than the client latency around ~50ms, default is 10ms: ");
                         if (int.TryParse(Console.ReadLine(), out int newServerLatency) && newServerLatency >= latencyServerMin && newServerLatency <= latencyServerMax)
                         {
                             StreamingApplication.AudioSettings._settings.ServerLatency = newServerLatency;
@@ -107,10 +89,10 @@ namespace StreamingApplication
                         }
                         break;
 
-                    case "4":
+                    case "3":
                         var latencyClientMin = 10;
                         var latencyClientMax = 1000;
-                        Console.Write($"Enter a new client latency ({latencyClientMin}-{latencyClientMax}), must be more than the server latency around ~50ms: ");
+                        Console.Write($"Enter a new client latency ({latencyClientMin}-{latencyClientMax}), must be more than the server latency around ~50ms, default is 60ms: ");
                         if (int.TryParse(Console.ReadLine(), out int newClientLatency) && newClientLatency >= latencyClientMin && newClientLatency <= latencyClientMax)
                         {
                             StreamingApplication.AudioSettings._settings.ClientLatency = newClientLatency;
@@ -124,17 +106,17 @@ namespace StreamingApplication
                         }
                         break;
                     
-                    case "5":
+                    case "4":
                         StreamingApplication.AudioSettings._settings.EnableVolumeNormalization = !StreamingApplication.AudioSettings._settings.EnableVolumeNormalization;
                         Console.WriteLine($"Normalization {(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}");
                         StreamingApplication.AudioSettings.SaveSettings();
                         break;
 
-                    case "6":
+                    case "5":
                         AudioStreamingClient.ShowVolumeControlMenu();
                         break;
 
-                    case "7":
+                    case "6":
                         return;
                 }
             }

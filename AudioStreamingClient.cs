@@ -4,7 +4,7 @@ using Concentus.Structs;
 using Concentus.Enums;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
-
+using System.IO.Compression;
 
 namespace StreamingApplication
 {
@@ -104,15 +104,6 @@ namespace StreamingApplication
             };
 
             WaveFormat serverWaveFormat;
-
-
-            if (AudioSettings._settings.EnableCompression)
-            {
-
-                sampleRate = 44100;
-                bitsPerSample = 16;
-                channels = 2;
-            }
 
             // Создаем формат с IEEE Float и WAVE_FORMAT_EXTENSIBLE
             Console.WriteLine($"Init audio, rate: {sampleRate}, bits: {bitsPerSample}, channels: {channels}");
@@ -362,74 +353,15 @@ namespace StreamingApplication
             }
         }
 
-        public byte[] DecompressAudio(byte[] opusData)
+        public byte[] DecompressAudio(byte[] compressedData)
         {
-            byte[] opusPacket = null;
-            short[] pcmBuffer = null;
-            byte[] byteBuffer = null;
-
-            try
+            using var inputStream = new MemoryStream(compressedData);
+            using var outputStream = new MemoryStream();
+            using (var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress))
             {
-                using var opusStream = new MemoryStream(opusData);
-                using var reader = new BinaryReader(opusStream);
-
-                int sampleRate = reader.ReadInt32();
-                int channels = reader.ReadInt32();
-
-                var decoder = new OpusDecoder(sampleRate, channels);
-                int frameSize = sampleRate / 50;
-
-                opusPacket = BufferPool._bufferPool.RentByteBuffer(1275 * 4);
-                pcmBuffer = BufferPool._bufferPool.RentShortBuffer(frameSize * channels * 4);
-                byteBuffer = BufferPool._bufferPool.RentByteBuffer(frameSize * channels * 2 * 4);
-
-                using var memoryStream = new MemoryStream();
-                using (var outputStream = new BufferedStream(memoryStream, 65536))
-                {
-                    while (opusStream.Position < opusStream.Length)
-                    {
-                        int packetLength = reader.ReadInt32();
-                        if (packetLength <= 0 || packetLength > 1275)
-                        {
-                            Logger.Log($"Wrong packet length: {packetLength}", Logger.LogLevel.Error);
-                            break;
-                        }
-
-                        reader.Read(opusPacket, 0, packetLength);
-
-                        int samplesDecoded = decoder.Decode(
-                            opusPacket,
-                            0,
-                            packetLength,
-                            pcmBuffer,
-                            0,
-                            frameSize,
-                            false
-                        );
-
-                        if (samplesDecoded > 0)
-                        {
-                            int bytesToCopy = samplesDecoded * channels * 2;
-                            Buffer.BlockCopy(pcmBuffer, 0, byteBuffer, 0, bytesToCopy);
-                            outputStream.Write(byteBuffer, 0, bytesToCopy);
-                        }
-                    }
-                    outputStream.Flush();
-                }
-
-                return memoryStream.ToArray();
+                gzipStream.CopyTo(outputStream);
             }
-            catch (Exception ex)
-            {
-                Logger.Log($"Opus decompression failed: {ex.Message}", Logger.LogLevel.Error);
-                return Array.Empty<byte>();
-            }
-            finally
-            {
-                if (opusPacket != null) BufferPool._bufferPool.Return(opusPacket);
-                if (pcmBuffer != null) BufferPool._bufferPool.Return(pcmBuffer);
-                if (byteBuffer != null) BufferPool._bufferPool.Return(byteBuffer);
-            }
+            return outputStream.ToArray();
         }
     }
 }

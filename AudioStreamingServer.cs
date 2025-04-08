@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using NAudio.CoreAudioApi;
 using Concentus.Structs;
 using Concentus.Enums;
-
+using System.IO.Compression;
 
 namespace StreamingApplication
 {
@@ -154,87 +154,16 @@ namespace StreamingApplication
             }
         }
 
-        public byte[]? CompressAudio(byte[] pcmData)
+        public byte[] CompressAudio(byte[] pcmData)
         {
-            byte[] byteBuffer = null;
-            short[] pcmBuffer = null;
-            byte[] opusPacket = null;
-
-            try
+            using var outputStream = new MemoryStream();
+            using (var gzipStream = new GZipStream(outputStream, CompressionLevel.Fastest))
             {
-                var targetFormat = new WaveFormat(48000, 16, 2);
-
-                using var inputStream = new MemoryStream(pcmData);
-                using var reader = new RawSourceWaveStream(inputStream, _serverWaveFormat);
-                using var resampler = new MediaFoundationResampler(reader, targetFormat)
-                {
-                    ResamplerQuality = 30
-                };
-
-                var encoder = new OpusEncoder(targetFormat.SampleRate, targetFormat.Channels, OpusApplication.OPUS_APPLICATION_AUDIO)
-                {
-                    Bitrate = AudioSettings._settings.Bitrate * 1000,
-                    Complexity = 1,
-                    UseInbandFEC = false,
-                    UseDTX = false
-                };
-
-                int frameSize = targetFormat.SampleRate / 50;
-                int frameByteSize = frameSize * targetFormat.Channels * 2;
-
-                byteBuffer = BufferPool._bufferPool.RentByteBuffer(frameByteSize * 4);
-                pcmBuffer = BufferPool._bufferPool.RentShortBuffer(frameSize * targetFormat.Channels * 4);
-                opusPacket = BufferPool._bufferPool.RentByteBuffer(1275 * 4);
-
-                using var memoryStream = new MemoryStream();
-                using (var outputStream = new BufferedStream(memoryStream, 65536))
-                {
-                    var writer = new BinaryWriter(outputStream);
-                    writer.Write(targetFormat.SampleRate);
-                    writer.Write(targetFormat.Channels);
-
-                    int bytesRead;
-                    while ((bytesRead = resampler.Read(byteBuffer, 0, byteBuffer.Length)) > 0)
-                    {
-                        int samplesCount = bytesRead / 2;
-                        Buffer.BlockCopy(byteBuffer, 0, pcmBuffer, 0, bytesRead);
-
-                        int framesProcessed = samplesCount / (frameSize * targetFormat.Channels);
-                        for (int i = 0; i < framesProcessed; i++)
-                        {
-                            int offset = i * frameSize * targetFormat.Channels;
-                            int packetLength = encoder.Encode(
-                                pcmBuffer,
-                                offset,
-                                frameSize,
-                                opusPacket,
-                                i * 1275,
-                                opusPacket.Length - i * 1275
-                            );
-
-                            if (packetLength > 0)
-                            {
-                                writer.Write(packetLength);
-                                writer.Write(opusPacket, i * 1275, packetLength);
-                            }
-                        }
-                    }
-                    outputStream.Flush();
-                }
-
-                return memoryStream.ToArray();
+                gzipStream.Write(pcmData, 0, pcmData.Length);
             }
-            catch (Exception ex)
-            {
-                Logger.Log($"Opus compression failed: {ex.Message}", Logger.LogLevel.Error);
-                return null;
-            }
-            finally
-            {
-                if (byteBuffer != null) BufferPool._bufferPool.Return(byteBuffer);
-                if (pcmBuffer != null) BufferPool._bufferPool.Return(pcmBuffer);
-                if (opusPacket != null) BufferPool._bufferPool.Return(opusPacket);
-            }
+            var result = outputStream.ToArray();
+            Logger.Log($"GZIP compressed: {pcmData.Length} bytes to {result.Length} bytes", Logger.LogLevel.Debug);
+            return result;
         }
 
         private void SendToAllClients(byte[] data)
