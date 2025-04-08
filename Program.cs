@@ -72,9 +72,12 @@ namespace StreamingApplication
                         Console.WriteLine($"Compression {(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}");
                         StreamingApplication.AudioSettings.SaveSettings();
                         break;
+
                     case "2":
-                        Console.Write("Enter new bitrate (32-320): ");
-                        if (int.TryParse(Console.ReadLine(), out int newRate) && newRate >= 32 && newRate <= 320)
+                        var bitrateMin = 32;
+                        var bitrateMax = 320;
+                        Console.Write($"Enter new bitrate ({bitrateMin}-{bitrateMax}): ");
+                        if (int.TryParse(Console.ReadLine(), out int newRate) && newRate >= bitrateMin && newRate <= bitrateMax)
                         {
                             StreamingApplication.AudioSettings._settings.Bitrate = newRate;
                             Console.WriteLine($"Bitrate set to {StreamingApplication.AudioSettings._settings.Bitrate} kbps");
@@ -88,8 +91,10 @@ namespace StreamingApplication
                         break;
 
                     case "3":
-                        Console.Write("Enter a new server latency (32-1000), must be less than the client latency around ~50ms: ");
-                        if (int.TryParse(Console.ReadLine(), out int newServerLatency) && newServerLatency >= 32 && newServerLatency <= 1000)
+                        var latencyServerMin = 10;
+                        var latencyServerMax = 1000;
+                        Console.Write($"Enter a new server latency ({latencyServerMin}-{latencyServerMax}), must be less than the client latency around ~50ms: ");
+                        if (int.TryParse(Console.ReadLine(), out int newServerLatency) && newServerLatency >= latencyServerMin && newServerLatency <= latencyServerMax)
                         {
                             StreamingApplication.AudioSettings._settings.ServerLatency = newServerLatency;
                             Console.WriteLine($"ServerLatency set to {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
@@ -97,13 +102,16 @@ namespace StreamingApplication
                         }
                         else
                         {
-                            Console.WriteLine("Invalid server latency! Must be 32-1000");
+                            Console.WriteLine($"Invalid server latency! Must be 32-{latencyServerMax}");
                             Console.ReadKey();
                         }
                         break;
+
                     case "4":
-                        Console.Write("Enter a new client latency (32-1000), must be more than the server latency around ~50ms: ");
-                        if (int.TryParse(Console.ReadLine(), out int newClientLatency) && newClientLatency >= 32 && newClientLatency <= 1000)
+                        var latencyClientMin = 10;
+                        var latencyClientMax = 1000;
+                        Console.Write($"Enter a new client latency ({latencyClientMin}-{latencyClientMax}), must be more than the server latency around ~50ms: ");
+                        if (int.TryParse(Console.ReadLine(), out int newClientLatency) && newClientLatency >= latencyClientMin && newClientLatency <= latencyClientMax)
                         {
                             StreamingApplication.AudioSettings._settings.ClientLatency = newClientLatency;
                             Console.WriteLine($"ServerLatency set to {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
@@ -111,7 +119,7 @@ namespace StreamingApplication
                         }
                         else
                         {
-                            Console.WriteLine("Invalid client latency! Must be 32-1000");
+                            Console.WriteLine($"Invalid client latency! Must be {latencyClientMin}-{latencyClientMax}");
                             Console.ReadKey();
                         }
                         break;
@@ -121,16 +129,11 @@ namespace StreamingApplication
                         Console.WriteLine($"Normalization {(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}");
                         StreamingApplication.AudioSettings.SaveSettings();
                         break;
+
                     case "6":
-                        Console.Write("Enter new normalization level (0-150%): ");
-                        if (int.TryParse(Console.ReadLine(), out int level) && level >= 0 && level <= 150)
-                        {
-                            StreamingApplication.AudioSettings._settings.VolumeNormalizationLevel = level;
-                            StreamingApplication.AudioSettings.SaveSettings();
-                            Console.WriteLine($"Normalization level set to {level}%");
-                        }
-                        else Console.WriteLine("Invalid value! Use 0-150");
+                        AudioStreamingClient.ShowVolumeControlMenu();
                         break;
+
                     case "7":
                         return;
                 }
@@ -363,7 +366,7 @@ namespace StreamingApplication
                     }
                     else if (key.Key == ConsoleKey.V)
                     {
-                        client.ShowVolumeControlMenu();
+                        AudioStreamingClient.ShowVolumeControlMenu();
                     }
                     else
                         ShowClientControls();

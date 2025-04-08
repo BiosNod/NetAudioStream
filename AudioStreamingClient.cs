@@ -28,8 +28,6 @@ namespace StreamingApplication
         public event Action<string>? OnDisconnected;
         public event Action<string>? OnReconnecting;
 
-
-        #region Public Methods
         public async Task ConnectAsync(string ip, int port, int outputDevice)
         {
             _serverIp = ip;
@@ -77,7 +75,6 @@ namespace StreamingApplication
                 }
             }
         }
-
 
         private async Task<(int, int, int)> ReceiveWaveFormat()
         {
@@ -156,9 +153,7 @@ namespace StreamingApplication
             Disconnect();
             GC.SuppressFinalize(this);
         }
-        #endregion
 
-        #region Private Methods
         private async Task InitializeNetworkConnection(string ip, int port)
         {
             _client = new TcpClient();
@@ -183,11 +178,14 @@ namespace StreamingApplication
             });
         }
 
-        public void ShowVolumeControlMenu()
+        public static void ShowVolumeControlMenu()
         {
+            var normalizationLevelMin = 0;
+            var normalizationLevelMax = 200;
+
             Console.WriteLine("\n=== Volume Control ===");
             Console.WriteLine($"Current volume: {AudioSettings._settings.VolumeNormalizationLevel}");
-            Console.WriteLine("Enter volume (0-200) or 'd' to disable control:");
+            Console.WriteLine($"Enter volume ({normalizationLevelMin}-{normalizationLevelMax}) or 'd' to disable control:");
             Console.Write("> ");
             var input = Console.ReadLine()?.Trim().ToLower();
 
@@ -197,7 +195,7 @@ namespace StreamingApplication
                 AudioSettings.SaveSettings();
                 Console.WriteLine("Volume control disabled\n");
             }
-            else if (int.TryParse(input, out int vol) && vol >= 0 && vol <= 200)
+            else if (int.TryParse(input, out int vol) && vol >= normalizationLevelMin && vol <= normalizationLevelMax)
             {
                 AudioSettings._settings.VolumeNormalizationLevel = vol;
                 AudioSettings._settings.EnableVolumeNormalization = true;
@@ -206,7 +204,7 @@ namespace StreamingApplication
             }
             else
             {
-                Console.WriteLine("Invalid input! Use 0-200 or 'd', skip, you can try again using V\n");
+                Console.WriteLine($"Invalid input! Use {normalizationLevelMin}-{normalizationLevelMax} or 'd', skip, you can try again using V\n");
             }
         }
 
@@ -433,6 +431,5 @@ namespace StreamingApplication
                 if (byteBuffer != null) BufferPool._bufferPool.Return(byteBuffer);
             }
         }
-        #endregion
     }
 }
