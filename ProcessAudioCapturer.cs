@@ -2,13 +2,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NAudio.CoreAudioApi;
 
 namespace StreamingApplication
 {
-    public class ProcessAudioCapturer : IAudioCapturer, IDisposable
+    public class ProcessAudioCapturer : JobManager, IAudioCapturer, IDisposable
     {
         private readonly uint _targetProcessId;
         private Process _loopbackProcess;
@@ -28,6 +28,8 @@ namespace StreamingApplication
         public ProcessAudioCapturer(uint processId)
         {
             _targetProcessId = processId;
+            // Создаем JobObject при инициализации класса
+            CreateAndConfigureJobObject();
         }
 
         /// <summary>
@@ -55,13 +57,19 @@ namespace StreamingApplication
                     Arguments = $"{_targetProcessId} includetree -stream -silence -skipheaders",
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    RedirectStandardOutput = true
+                    RedirectStandardOutput = true,
+                    RedirectStandardInput = true
                 },
                 EnableRaisingEvents = true
             };
 
-            // Start the process
             _loopbackProcess.Start();
+
+            // Привязываем процесс к JobObject сразу после запуска
+            if (_jobHandle != IntPtr.Zero)
+            {
+                AssignProcessToJobObject(_jobHandle, _loopbackProcess.Handle);
+            }
 
             // Start reading the output in a separate task
             _readTask = Task.Run(() => ReadOutputStreamAsync(_cts.Token), _cts.Token);
@@ -83,27 +91,36 @@ namespace StreamingApplication
             try
             {
                 // Try to gracefully stop the process first
-                if (!_loopbackProcess.HasExited)
+                if (_loopbackProcess != null && !_loopbackProcess.HasExited)
                 {
-                    // Send 'Q' key to stop the process as per ApplicationLoopback's design
-                    _loopbackProcess.StandardInput.Write('Q');
-
-                    // Give it a moment to exit gracefully
-                    if (!_loopbackProcess.WaitForExit(500))
+                    try
                     {
-                        _loopbackProcess.Kill();
+                        // Send 'Q' key to stop the process as per ApplicationLoopback's design
+                        _loopbackProcess.StandardInput.Write('Q');
+                        _loopbackProcess.StandardInput.Flush();
+
+                        // Give it a moment to exit gracefully
+                        if (!_loopbackProcess.WaitForExit(1000))
+                        {
+                            _loopbackProcess.Kill();
+                        }
+                    }
+                    catch
+                    {
+                    	// Try to kill the process if graceful shutdown failed
+                        try { _loopbackProcess.Kill(); } catch { }
                     }
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error stopping loopback process: {ex.Message}");
-                // Try to kill the process if graceful shutdown failed
-                try { _loopbackProcess?.Kill(); } catch { }
             }
-
-            // Wait for the reading task to complete
-            try { _readTask?.Wait(500); } catch { }
+            finally
+            {
+            	// Wait for the reading task to complete
+                try { _readTask?.Wait(500); } catch { }
+            }
         }
 
         /// <summary>
@@ -158,10 +175,20 @@ namespace StreamingApplication
             Stop();
 
             _cts?.Dispose();
+            try { _loopbackProcess?.Kill(); } catch { }
             _loopbackProcess?.Dispose();
+
+            // Закрытие JobObject при уничтожении класса
+            if (_jobHandle != IntPtr.Zero)
+            {
+                CloseHandle(_jobHandle);
+                _jobHandle = IntPtr.Zero;
+            }
 
             _disposed = true;
             GC.SuppressFinalize(this);
         }
+
+        ~ProcessAudioCapturer() => Dispose();
     }
 }
