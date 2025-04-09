@@ -1,335 +1,160 @@
-﻿using NAudio.CoreAudioApi;
-using NAudio.Wave;
-using System;
+﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
+using NAudio.CoreAudioApi;
 
 namespace StreamingApplication
 {
-    public class ProcessLoopbackCapturer : IAudioCapturer, IDisposable
+    public class ProcessAudioCapturer : IAudioCapturer, IDisposable
     {
-        private readonly uint _processId;
-        private MMDevice _device;
-        private WasapiCapture _capture;
-        private bool _isCapturing;
+        private readonly uint _targetProcessId;
+        private Process _loopbackProcess;
+        private CancellationTokenSource _cts;
+        private Task _readTask;
+        private bool _isRunning = false;
+        private bool _disposed = false;
 
         public event Action<byte[]> DataAvailable = delegate { };
 
-        public ProcessLoopbackCapturer(uint processId, bool includeProcessTree = true)
+        /// <summary>
+        /// Creates a new ProcessAudioCapturer that uses ApplicationLoopback.exe
+        /// </summary>
+        /// <param name="device">Audio device (not used in this implementation but kept for interface compatibility)</param>
+        /// <param name="processId">Target process ID to capture audio from</param>
+        public ProcessAudioCapturer(uint processId)
         {
-            _processId = processId;
-            Logger.Log($"Creating capturer for PID: {processId}", Logger.LogLevel.Debug);
+            _targetProcessId = processId;
         }
 
+        /// <summary>
+        /// Starts capturing audio from the target process
+        /// </summary>
         public void Start()
         {
-            Logger.Log($"Starting audio capture for PID: {_processId}", Logger.LogLevel.Debug);
-
-            try
-            {
-                // Check if process exists
-                try
-                {
-                    Process.GetProcessById((int)_processId);
-                }
-                catch
-                {
-                    Logger.Log($"Process with ID {_processId} does not exist", Logger.LogLevel.Error);
-                    return;
-                }
-
-                // Create device enumerator
-                var deviceEnumerator = new MMDeviceEnumerator();
-                _device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-
-                Logger.Log($"Using audio device: {_device.FriendlyName}", Logger.LogLevel.Debug);
-
-                // Create WASAPI capture
-                _capture = new WasapiLoopbackCapture(_device);
-
-                // Subscribe to data available event
-                _capture.DataAvailable += OnDataAvailable;
-                _capture.RecordingStopped += OnRecordingStopped;
-
-                // Start capturing
-                _isCapturing = true;
-                _capture.StartRecording();
-
-                Logger.Log("Audio capture started successfully", Logger.LogLevel.Debug);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error starting audio capture: {ex}", Logger.LogLevel.Error);
-                CleanUp();
-            }
-        }
-
-        private void OnDataAvailable(object sender, WaveInEventArgs e)
-        {
-            try
-            {
-                if (_isCapturing && e.BytesRecorded > 0)
-                {
-                    // Create a copy of the data to ensure it's not modified
-                    var buffer = new byte[e.BytesRecorded];
-                    Array.Copy(e.Buffer, buffer, e.BytesRecorded);
-
-                    // Raise event
-                    DataAvailable?.Invoke(buffer);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error in OnDataAvailable: {ex}", Logger.LogLevel.Error);
-            }
-        }
-
-        private void OnRecordingStopped(object sender, StoppedEventArgs e)
-        {
-            Logger.Log("Recording stopped", Logger.LogLevel.Debug);
-
-            if (e.Exception != null)
-            {
-                Logger.Log($"Recording stopped with exception: {e.Exception}", Logger.LogLevel.Error);
-            }
-
-            _isCapturing = false;
-        }
-
-        public void Stop()
-        {
-            Logger.Log("Stopping audio capture", Logger.LogLevel.Debug);
-            _isCapturing = false;
-
-            try
-            {
-                _capture?.StopRecording();
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error stopping recording: {ex}", Logger.LogLevel.Error);
-            }
-
-            CleanUp();
-        }
-
-        private void CleanUp()
-        {
-            Logger.Log("Cleaning up resources", Logger.LogLevel.Debug);
-
-            try
-            {
-                if (_capture != null)
-                {
-                    _capture.DataAvailable -= OnDataAvailable;
-                    _capture.RecordingStopped -= OnRecordingStopped;
-                    _capture.Dispose();
-                    _capture = null;
-                }
-
-                if (_device != null)
-                {
-                    _device.Dispose();
-                    _device = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error cleaning up resources: {ex}", Logger.LogLevel.Error);
-            }
-        }
-
-        public void Dispose()
-        {
-            Logger.Log("Disposing ProcessLoopbackCapturer", Logger.LogLevel.Debug);
-            Stop();
-            GC.SuppressFinalize(this);
-        }
-    }
-
-    /// <summary>
-    /// Alternative implementation that uses audio filtering to focus on audio from a specific process
-    /// Note: This doesn't isolate audio perfectly but avoids using complex Windows APIs
-    /// </summary>
-    public class ProcessAudioCapture : IAudioCapturer, IDisposable
-    {
-        private readonly string _processName;
-        private WasapiLoopbackCapture _capture;
-        private bool _isCapturing;
-        private System.Timers.Timer _processMonitorTimer;
-        private bool _isTargetProcessRunning;
-
-        public event Action<byte[]> DataAvailable = delegate { };
-
-        public ProcessAudioCapture(uint processId)
-        {
-            try
-            {
-                var process = Process.GetProcessById((int)processId);
-                _processName = process.ProcessName;
-                Logger.Log($"Creating audio capturer for process: {_processName} (PID: {processId})", Logger.LogLevel.Debug);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error getting process info: {ex}", Logger.LogLevel.Error);
-                _processName = null;
-            }
-        }
-
-        public ProcessAudioCapture(string processName)
-        {
-            _processName = processName;
-            Logger.Log($"Creating audio capturer for process: {_processName}", Logger.LogLevel.Debug);
-        }
-
-        public void Start()
-        {
-            if (string.IsNullOrEmpty(_processName))
-            {
-                Logger.Log("Cannot start - no valid process specified", Logger.LogLevel.Error);
+            if (_isRunning)
                 return;
-            }
 
-            Logger.Log($"Starting audio capture for process: {_processName}", Logger.LogLevel.Debug);
+            _isRunning = true;
+            _cts = new CancellationTokenSource();
 
-            try
+            // Configure the process to run ApplicationLoopback.exe
+            _loopbackProcess = new Process
             {
-                // Create device enumerator
-                var deviceEnumerator = new MMDeviceEnumerator();
-                var device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-
-                // Create WASAPI capture
-                _capture = new WasapiLoopbackCapture(device);
-
-                // Subscribe to data available event
-                _capture.DataAvailable += OnDataAvailable;
-                _capture.RecordingStopped += OnRecordingStopped;
-
-                // Start monitoring the target process
-                _processMonitorTimer = new System.Timers.Timer(500); // Check every 500ms
-                _processMonitorTimer.Elapsed += (s, e) => CheckTargetProcessRunning();
-                _processMonitorTimer.Start();
-                CheckTargetProcessRunning();
-
-                // Start capturing
-                _isCapturing = true;
-                _capture.StartRecording();
-
-                Logger.Log("Audio capture started successfully", Logger.LogLevel.Debug);
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error starting audio capture: {ex}", Logger.LogLevel.Error);
-                CleanUp();
-            }
-        }
-
-        private void CheckTargetProcessRunning()
-        {
-            try
-            {
-                var processes = Process.GetProcessesByName(_processName);
-                _isTargetProcessRunning = processes.Length > 0;
-
-                if (_isTargetProcessRunning)
+                StartInfo = new ProcessStartInfo
                 {
-                    Logger.Log($"Target process {_processName} is running", Logger.LogLevel.Debug);
-                }
-                else
-                {
-                    Logger.Log($"Target process {_processName} is not running", Logger.LogLevel.Debug);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error checking process status: {ex}", Logger.LogLevel.Error);
-                _isTargetProcessRunning = false;
-            }
+                    FileName = "ApplicationLoopback.exe",
+                    Arguments = $"{_targetProcessId} includetree -stream -silence -skipheaders",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true
+                },
+                EnableRaisingEvents = true
+            };
+
+            // Start the process
+            _loopbackProcess.Start();
+
+            // Start reading the output in a separate task
+            _readTask = Task.Run(() => ReadOutputStreamAsync(_cts.Token), _cts.Token);
         }
 
-        private void OnDataAvailable(object sender, WaveInEventArgs e)
-        {
-            try
-            {
-                // Only pass audio data if the target process is running
-                if (_isCapturing && _isTargetProcessRunning && e.BytesRecorded > 0)
-                {
-                    // Create a copy of the data to ensure it's not modified
-                    var buffer = new byte[e.BytesRecorded];
-                    Array.Copy(e.Buffer, buffer, e.BytesRecorded);
-
-                    // Raise event
-                    DataAvailable?.Invoke(buffer);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Error in OnDataAvailable: {ex}", Logger.LogLevel.Error);
-            }
-        }
-
-        private void OnRecordingStopped(object sender, StoppedEventArgs e)
-        {
-            Logger.Log("Recording stopped", Logger.LogLevel.Debug);
-
-            if (e.Exception != null)
-            {
-                Logger.Log($"Recording stopped with exception: {e.Exception}", Logger.LogLevel.Error);
-            }
-
-            _isCapturing = false;
-        }
-
+        /// <summary>
+        /// Stops capturing audio
+        /// </summary>
         public void Stop()
         {
-            Logger.Log("Stopping audio capture", Logger.LogLevel.Debug);
-            _isCapturing = false;
+            if (!_isRunning)
+                return;
+
+            _isRunning = false;
+
+            // Cancel the reading task
+            _cts?.Cancel();
 
             try
             {
-                _processMonitorTimer?.Stop();
-                _capture?.StopRecording();
+                // Try to gracefully stop the process first
+                if (!_loopbackProcess.HasExited)
+                {
+                    // Send 'Q' key to stop the process as per ApplicationLoopback's design
+                    _loopbackProcess.StandardInput.Write('Q');
+
+                    // Give it a moment to exit gracefully
+                    if (!_loopbackProcess.WaitForExit(500))
+                    {
+                        _loopbackProcess.Kill();
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Logger.Log($"Error stopping recording: {ex}", Logger.LogLevel.Error);
+                Debug.WriteLine($"Error stopping loopback process: {ex.Message}");
+                // Try to kill the process if graceful shutdown failed
+                try { _loopbackProcess?.Kill(); } catch { }
             }
 
-            CleanUp();
+            // Wait for the reading task to complete
+            try { _readTask?.Wait(500); } catch { }
         }
 
-        private void CleanUp()
+        /// <summary>
+        /// Continuously reads from the process output stream and raises DataAvailable events
+        /// </summary>
+        private async Task ReadOutputStreamAsync(CancellationToken cancellationToken)
         {
-            Logger.Log("Cleaning up resources", Logger.LogLevel.Debug);
-
             try
             {
-                if (_processMonitorTimer != null)
-                {
-                    _processMonitorTimer.Stop();
-                    _processMonitorTimer.Dispose();
-                    _processMonitorTimer = null;
-                }
+                // Buffer for reading output
+                byte[] buffer = new byte[16384]; // 16KB buffer
+                Stream outputStream = _loopbackProcess.StandardOutput.BaseStream;
 
-                if (_capture != null)
+                while (!cancellationToken.IsCancellationRequested && !_loopbackProcess.HasExited)
                 {
-                    _capture.DataAvailable -= OnDataAvailable;
-                    _capture.RecordingStopped -= OnRecordingStopped;
-                    _capture.Dispose();
-                    _capture = null;
+                    int bytesRead = await outputStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+
+                    if (bytesRead > 0)
+                    {
+                        // Create a copy of the buffer to avoid issues with buffer reuse
+                        byte[] audioData = new byte[bytesRead];
+                        Buffer.BlockCopy(buffer, 0, audioData, 0, bytesRead);
+
+                        // Raise the event with the captured audio data
+                        DataAvailable?.Invoke(audioData);
+                    }
+                    else if (bytesRead == 0)
+                    {
+                        // End of stream or process exited
+                        break;
+                    }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when cancellation is requested
             }
             catch (Exception ex)
             {
-                Logger.Log($"Error cleaning up resources: {ex}", Logger.LogLevel.Error);
+                Debug.WriteLine($"Error reading from ApplicationLoopback: {ex.Message}");
             }
         }
 
+        /// <summary>
+        /// Disposes resources
+        /// </summary>
         public void Dispose()
         {
-            Logger.Log("Disposing ProcessAudioCapture", Logger.LogLevel.Debug);
+            if (_disposed)
+                return;
+
             Stop();
+
+            _cts?.Dispose();
+            _loopbackProcess?.Dispose();
+
+            _disposed = true;
             GC.SuppressFinalize(this);
         }
     }

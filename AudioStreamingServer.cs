@@ -5,6 +5,7 @@ using NAudio.CoreAudioApi;
 using Concentus.Structs;
 using Concentus.Enums;
 using System.IO.Compression;
+using System.Threading.Channels;
 
 namespace StreamingApplication
 {
@@ -31,7 +32,7 @@ namespace StreamingApplication
             if (flow == DataFlow.Render)
             {
                 _capturer = processId > 0
-                    ? new ProcessLoopbackCapturer(processId)
+                    ? new ProcessAudioCapturer(processId)
                     : new WasapiLoopbackCapturer(inputDevice);
             }
             else
@@ -39,7 +40,13 @@ namespace StreamingApplication
                 _capturer = new WasapiCaptureCapturer(inputDevice);
             }
 
-            _serverWaveFormat = inputDevice.AudioClient.MixFormat;
+            // Если processId > 0, то это захват аудио процесса через mmdevapi, а там фиксированные значений
+            // (это другой проект ApplicationLoopback)
+            if (processId > 0)
+                _serverWaveFormat = new WaveFormat(44100, 16, 2);
+            else
+                _serverWaveFormat = inputDevice.AudioClient.MixFormat;
+            
             _capturer.DataAvailable += OnAudioDataAvailable;
             var interval = AudioSettings._settings.ServerLatency;
             _sendTimer = new Timer(SendBufferedData, null, interval, interval);
