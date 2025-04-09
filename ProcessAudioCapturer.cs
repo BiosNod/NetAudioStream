@@ -41,6 +41,11 @@ namespace StreamingApplication
             _isRunning = true;
             _cts = new CancellationTokenSource();
 
+            foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(ApplicationLoopbackPath)))
+            {
+                try { process.Kill(); } catch { }
+            }
+
             // Configure the process to run ApplicationLoopback.exe
             _loopbackProcess = new Process
             {
