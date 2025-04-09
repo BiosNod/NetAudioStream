@@ -278,6 +278,26 @@ namespace StreamingApplication
 
                 if (choice == "3")
                 {
+                    // Получаем полный путь к текущему EXE
+                    string currentExePath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+                    string currentExeDirectory = Path.GetDirectoryName(currentExePath);
+                    string requiredExePath = Path.Combine(currentExeDirectory, ProcessAudioCapturer.ApplicationLoopbackPath);
+
+                    // Проверяем наличие доп. модуля
+                    if (!File.Exists(requiredExePath))
+                    {
+                        Console.WriteLine($"\n=== ERROR: {ProcessAudioCapturer.ApplicationLoopbackPath} not found! ===");
+                        Console.WriteLine($"Current EXE location:\n    {currentExePath}"); // Показываем путь к текущему EXE
+                        Console.WriteLine("\nRequired steps:");
+                        Console.WriteLine("1. Download from: https://github.com/BiosNod/ApplicationLoopback");
+                        Console.WriteLine("2. Open ApplicationLoopback.sln in Visual Studio");
+                        Console.WriteLine("3. Build Release configuration");
+                        Console.WriteLine($"4. Copy {ProcessAudioCapturer.ApplicationLoopbackPath} to this location:\n    {currentExeDirectory}");
+                        Console.WriteLine("\n\nPress any key to return...");
+                        Console.ReadKey();
+                        return;
+                    }
+
                     processId = AudioDeviceSelector.SelectProcess();
                     device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
                 }

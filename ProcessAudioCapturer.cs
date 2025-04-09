@@ -16,6 +16,7 @@ namespace StreamingApplication
         private Task _readTask;
         private bool _isRunning = false;
         private bool _disposed = false;
+        public static string ApplicationLoopbackPath = "ApplicationLoopback.exe";
 
         public event Action<byte[]> DataAvailable = delegate { };
 
@@ -45,7 +46,7 @@ namespace StreamingApplication
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "ApplicationLoopback.exe",
+                    FileName = ApplicationLoopbackPath,
                     Arguments = $"{_targetProcessId} includetree -stream -silence -skipheaders",
                     UseShellExecute = false,
                     CreateNoWindow = true,
