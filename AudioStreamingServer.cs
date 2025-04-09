@@ -31,7 +31,7 @@ namespace StreamingApplication
             if (flow == DataFlow.Render)
             {
                 _capturer = processId > 0
-                    ? new ProcessAudioCapturer(inputDevice, processId)
+                    ? new ProcessLoopbackCapturer(processId)
                     : new WasapiLoopbackCapturer(inputDevice);
             }
             else
