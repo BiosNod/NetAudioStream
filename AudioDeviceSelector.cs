@@ -114,11 +114,13 @@ namespace StreamingApplication
                     var process = Process.GetProcessById((int)session.GetProcessID);
                     processes.Add((Name: process.ProcessName, Pid: session.GetProcessID, Memory: process.WorkingSet64)); // Явное именование элементов кортежа
                 }
-                catch { /* Игнорируем недоступные процессы */ }
+                catch {
+                    Logger.Log($"Skip unavailable process PID: {session.GetProcessID}", Logger.LogLevel.Warning);
+                }
             }
 
             var sorted = processes
-                .Where(p => p.Memory >= 1 * 1024 * 1024)
+                //.Where(p => p.Memory >= 1 * 1024 * 1024)
                 .OrderByDescending(p => p.Memory)
                 .ToList();
 
