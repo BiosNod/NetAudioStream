@@ -60,8 +60,8 @@ namespace StreamingApplication
                 Console.WriteLine($"1. Toggle Compression (Fastest GZIP reduce 3 times) [{(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
                 Console.WriteLine($"2. Set server latency: {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
                 Console.WriteLine($"3. Set client latency: {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
-                Console.WriteLine($"4. Toggle Normalization [{(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"5. Set Normalization Level [Current: {StreamingApplication.AudioSettings._settings.VolumeNormalizationLevel}%]");
+                Console.WriteLine($"4. Toggle volume control [{(StreamingApplication.AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"5. Set volume level [Current: {StreamingApplication.AudioSettings._settings.VolumeLevel}%]");
                 Console.WriteLine($"6. Back to Main Menu");
 
                 switch (Console.ReadLine())
@@ -107,8 +107,8 @@ namespace StreamingApplication
                         break;
                     
                     case "4":
-                        StreamingApplication.AudioSettings._settings.EnableVolumeNormalization = !StreamingApplication.AudioSettings._settings.EnableVolumeNormalization;
-                        Console.WriteLine($"Normalization {(StreamingApplication.AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}");
+                        StreamingApplication.AudioSettings._settings.EnableVolumeControl = !StreamingApplication.AudioSettings._settings.EnableVolumeControl;
+                        Console.WriteLine($"Volume control {(StreamingApplication.AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}");
                         StreamingApplication.AudioSettings.SaveSettings();
                         break;
 

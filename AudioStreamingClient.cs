@@ -171,31 +171,31 @@ namespace StreamingApplication
 
         public static void ShowVolumeControlMenu()
         {
-            var normalizationLevelMin = 0;
-            var normalizationLevelMax = 200;
+            var volumeLevelMin = 0;
+            var volumeLevelMax = 10000;
 
             Console.WriteLine("\n=== Volume Control ===");
-            Console.WriteLine($"Current volume: {AudioSettings._settings.VolumeNormalizationLevel}");
-            Console.WriteLine($"Enter volume ({normalizationLevelMin}-{normalizationLevelMax}) or 'd' to disable control:");
+            Console.WriteLine($"Current volume (default is 100): {AudioSettings._settings.VolumeLevel}");
+            Console.WriteLine($"Enter volume ({volumeLevelMin}-{volumeLevelMax}) or 'd' to disable control:");
             Console.Write("> ");
             var input = Console.ReadLine()?.Trim().ToLower();
 
             if (input == "d" || input == "D")
             {
-                AudioSettings._settings.EnableVolumeNormalization = false;
+                AudioSettings._settings.EnableVolumeControl = false;
                 AudioSettings.SaveSettings();
                 Console.WriteLine("Volume control disabled\n");
             }
-            else if (int.TryParse(input, out int vol) && vol >= normalizationLevelMin && vol <= normalizationLevelMax)
+            else if (int.TryParse(input, out int vol) && vol >= volumeLevelMin && vol <= volumeLevelMax)
             {
-                AudioSettings._settings.VolumeNormalizationLevel = vol;
-                AudioSettings._settings.EnableVolumeNormalization = true;
+                AudioSettings._settings.VolumeLevel = vol;
+                AudioSettings._settings.EnableVolumeControl = true;
                 AudioSettings.SaveSettings();
                 Console.WriteLine($"Volume set to {vol}%\n");
             }
             else
             {
-                Console.WriteLine($"Invalid input! Use {normalizationLevelMin}-{normalizationLevelMax} or 'd', skip, you can try again using V\n");
+                Console.WriteLine($"Invalid input! Use {volumeLevelMin}-{volumeLevelMax} or 'd', skip, you can try again using V\n");
             }
         }
 
@@ -275,9 +275,9 @@ namespace StreamingApplication
                 ? DecompressAudio(decryptedData)
                 : decryptedData;
 
-            if (AudioSettings._settings.EnableVolumeNormalization && AudioSettings._settings.VolumeNormalizationLevel != 100)
+            if (AudioSettings._settings.EnableVolumeControl && AudioSettings._settings.VolumeLevel != 100)
             {
-                audioData = AdjustVolume(audioData, AudioSettings._settings.VolumeNormalizationLevel);
+                audioData = AdjustVolume(audioData, AudioSettings._settings.VolumeLevel);
             }
 
             _waveProvider!.AddSamples(audioData, 0, audioData.Length);
