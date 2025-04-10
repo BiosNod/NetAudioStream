@@ -12,7 +12,6 @@ namespace StreamingApplication
 
             while (true)
             {
-                Console.Clear();
                 Console.WriteLine("1. Start Streaming Server");
                 Console.WriteLine("2. Connect to Streaming Server");
                 Console.WriteLine("3. Test Playback Device");
@@ -55,7 +54,6 @@ namespace StreamingApplication
         {
             while (true)
             {
-                Console.Clear();
                 Console.WriteLine("Audio Compression Settings:");
                 Console.WriteLine($"1. Toggle Compression (Fastest GZIP reduce 3 times) [{(AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
                 Console.WriteLine($"2. Set server latency: {AudioSettings._settings.ServerLatency} ms");
@@ -63,7 +61,7 @@ namespace StreamingApplication
                 Console.WriteLine($"4. Toggle volume control [{(AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}]");
                 Console.WriteLine($"5. Set volume level [Current: {AudioSettings._settings.VolumeLevel}%]");
                 Console.WriteLine($"6. Toggle volume normalization [{(AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"7. Back to Main Menu");
+                Console.WriteLine($"7. Cancel (skip setup)");
 
                 switch (Console.ReadLine())
                 {
@@ -133,13 +131,12 @@ namespace StreamingApplication
         {
             while (true)
             {
-                Console.Clear();
                 Console.WriteLine("Network Settings Management:");
                 Console.WriteLine("1. View Current Settings");
                 Console.WriteLine("2. Toggle UPnP (Current: " +
                     (NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
                 Console.WriteLine("3. Reset to Defaults");
-                Console.WriteLine("4. Back to Main Menu");
+                Console.WriteLine("4. Cancel (skip setup)");
 
                 switch (Console.ReadLine())
                 {
@@ -172,11 +169,10 @@ namespace StreamingApplication
 
         private static void ShowAudioDevicesMenu()
         {
-            Console.Clear();
             Console.WriteLine("Audio Devices Information:");
             Console.WriteLine("1. Playback Devices");
             Console.WriteLine("2. Recording Devices");
-            Console.WriteLine("3. Back to Main Menu");
+            Console.WriteLine("3. Cancel (skip setup)");
 
             var choice = Console.ReadLine();
             switch (choice)
@@ -193,12 +189,6 @@ namespace StreamingApplication
                     Console.WriteLine("\n[Recording Devices via MMDevice]");
                     AudioDeviceSelector.ListMMDevices(DataFlow.Capture);
                     break;
-            }
-
-            if (choice != "3")
-            {
-                Console.WriteLine("\nPress any key to continue...");
-                Console.ReadKey();
             }
         }
 
@@ -286,7 +276,7 @@ namespace StreamingApplication
                 if (choice == "3")
                 {
                     // Получаем полный путь к текущему EXE
-                    string currentExePath = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
+                    string currentExePath = Environment.ProcessPath;
                     string currentExeDirectory = Path.GetDirectoryName(currentExePath);
                     string requiredExePath = Path.Combine(currentExeDirectory, ProcessAudioCapturer.ApplicationLoopbackPath);
 
@@ -322,9 +312,39 @@ namespace StreamingApplication
                 using var server = new AudioStreamingServer(ip, port, device, flow, processId);
                 server.Start();
 
-                Console.WriteLine("Server started. Press Q to stop...");
-                while (Console.ReadKey(true).Key != ConsoleKey.Q) { }
-                server.Stop();
+                void ShowControls()
+                {
+                    Console.WriteLine("\nServer controls:");
+                    Console.WriteLine("Q - Stop stream");
+                    Console.WriteLine("A - Adjust audio during playback");
+                    Console.WriteLine("N - Adjust network during playback\n");
+                }
+
+                ShowControls();
+
+                // Основной цикл ожидания
+                while (true)
+                {
+                    var key = Console.ReadKey(intercept: true);
+                    if (key.Key == ConsoleKey.Q)
+                    {
+                        server.Stop();
+                        Console.WriteLine("\nDisconnecting...");
+                        break;
+                    }
+                    else if (key.Key == ConsoleKey.A)
+                    {
+                        AudioMainSettings();
+                        Console.WriteLine("\nContinue streaming...");
+                    }
+                    else if (key.Key == ConsoleKey.N)
+                    {
+                        NetworkMainSettings();
+                        Console.WriteLine("\nContinue streaming...");
+                    }
+                    else
+                        ShowControls();
+                }
             }
             catch (Exception ex)
             {
@@ -337,21 +357,21 @@ namespace StreamingApplication
         {
             try
             {
-                Console.Clear();
                 var (ip, port) = NetworkSettings.GetClientSettings();
                 int outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 using var client = new AudioStreamingClient();
 
-                void ShowClientControls()
+                void ShowControls()
                 {
                     Console.WriteLine("\nClient controls:");
                     Console.WriteLine("Q - Stop playback and disconnect");
-                    Console.WriteLine("V - Adjust volume during playback\n");
+                    Console.WriteLine("A - Adjust audio during playback");
+                    Console.WriteLine("N - Adjust network during playback\n");
                 }
 
                 // Добавляем обработчики событий
-                client.OnConnected += ShowClientControls;
+                client.OnConnected += ShowControls;
 
                 client.OnDisconnected += reason =>
                     Logger.Log($"Disconnected: {reason}", Logger.LogLevel.Warning);
@@ -373,12 +393,18 @@ namespace StreamingApplication
                         await Task.Delay(500);
                         break;
                     }
-                    else if (key.Key == ConsoleKey.V)
+                    else if (key.Key == ConsoleKey.A)
                     {
-                        AudioStreamingClient.ShowVolumeControlMenu();
+                        AudioMainSettings();
+                        Console.WriteLine("\nContinue listening...");
+                    }
+                    else if (key.Key == ConsoleKey.N)
+                    {
+                        NetworkMainSettings();
+                        Console.WriteLine("\nContinue listening...");
                     }
                     else
-                        ShowClientControls();
+                        ShowControls();
                 }
             }
             catch (Exception ex)

@@ -132,7 +132,7 @@ public static class AudioUtils
     {
         if (gain == 1.0f || audioData.Length == 0)
         {
-            Logger.Log($"Skp applying audio gain: {gain}", Logger.LogLevel.Debug);
+            Logger.Log($"Skip applying audio gain: {gain}", Logger.LogLevel.Debug);
             return audioData;
         }
 
