@@ -34,10 +34,10 @@ namespace StreamingApplication
                         await TestPlaybackDevice();
                         break;
                     case "4":
-                        AudioSettings();
+                        AudioMainSettings();
                         break;
                     case "5":
-                        NetworkSettings();
+                        NetworkMainSettings();
                         break;
                     case "6":
                         ShowAudioDevicesMenu();
@@ -51,25 +51,26 @@ namespace StreamingApplication
             }
         }
 
-        static void AudioSettings()
+        static void AudioMainSettings()
         {
             while (true)
             {
                 Console.Clear();
                 Console.WriteLine("Audio Compression Settings:");
-                Console.WriteLine($"1. Toggle Compression (Fastest GZIP reduce 3 times) [{(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"2. Set server latency: {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
-                Console.WriteLine($"3. Set client latency: {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
-                Console.WriteLine($"4. Toggle volume control [{(StreamingApplication.AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}]");
-                Console.WriteLine($"5. Set volume level [Current: {StreamingApplication.AudioSettings._settings.VolumeLevel}%]");
-                Console.WriteLine($"6. Back to Main Menu");
+                Console.WriteLine($"1. Toggle Compression (Fastest GZIP reduce 3 times) [{(AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"2. Set server latency: {AudioSettings._settings.ServerLatency} ms");
+                Console.WriteLine($"3. Set client latency: {AudioSettings._settings.ClientLatency} ms");
+                Console.WriteLine($"4. Toggle volume control [{(AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"5. Set volume level [Current: {AudioSettings._settings.VolumeLevel}%]");
+                Console.WriteLine($"6. Toggle volume normalization [{(AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}]");
+                Console.WriteLine($"7. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
                     case "1":
-                        StreamingApplication.AudioSettings._settings.EnableCompression = !StreamingApplication.AudioSettings._settings.EnableCompression;
-                        Console.WriteLine($"Compression {(StreamingApplication.AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}");
-                        StreamingApplication.AudioSettings.SaveSettings();
+                        AudioSettings._settings.EnableCompression = !AudioSettings._settings.EnableCompression;
+                        Console.WriteLine($"Compression {(AudioSettings._settings.EnableCompression ? "Enabled" : "Disabled")}");
+                        AudioSettings.SaveSettings();
                         break;
 
                     case "2":
@@ -78,9 +79,9 @@ namespace StreamingApplication
                         Console.Write($"Enter a new server latency ({latencyServerMin}-{latencyServerMax}), must be less than the client latency around ~50ms, default is 10ms: ");
                         if (int.TryParse(Console.ReadLine(), out int newServerLatency) && newServerLatency >= latencyServerMin && newServerLatency <= latencyServerMax)
                         {
-                            StreamingApplication.AudioSettings._settings.ServerLatency = newServerLatency;
-                            Console.WriteLine($"ServerLatency set to {StreamingApplication.AudioSettings._settings.ServerLatency} ms");
-                            StreamingApplication.AudioSettings.SaveSettings();
+                            AudioSettings._settings.ServerLatency = newServerLatency;
+                            Console.WriteLine($"ServerLatency set to {AudioSettings._settings.ServerLatency} ms");
+                            AudioSettings.SaveSettings();
                         }
                         else
                         {
@@ -95,9 +96,9 @@ namespace StreamingApplication
                         Console.Write($"Enter a new client latency ({latencyClientMin}-{latencyClientMax}), must be more than the server latency around ~50ms, default is 60ms: ");
                         if (int.TryParse(Console.ReadLine(), out int newClientLatency) && newClientLatency >= latencyClientMin && newClientLatency <= latencyClientMax)
                         {
-                            StreamingApplication.AudioSettings._settings.ClientLatency = newClientLatency;
-                            Console.WriteLine($"ServerLatency set to {StreamingApplication.AudioSettings._settings.ClientLatency} ms");
-                            StreamingApplication.AudioSettings.SaveSettings();
+                            AudioSettings._settings.ClientLatency = newClientLatency;
+                            Console.WriteLine($"ServerLatency set to {AudioSettings._settings.ClientLatency} ms");
+                            AudioSettings.SaveSettings();
                         }
                         else
                         {
@@ -107,9 +108,9 @@ namespace StreamingApplication
                         break;
                     
                     case "4":
-                        StreamingApplication.AudioSettings._settings.EnableVolumeControl = !StreamingApplication.AudioSettings._settings.EnableVolumeControl;
-                        Console.WriteLine($"Volume control {(StreamingApplication.AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}");
-                        StreamingApplication.AudioSettings.SaveSettings();
+                        AudioSettings._settings.EnableVolumeControl = !AudioSettings._settings.EnableVolumeControl;
+                        Console.WriteLine($"Volume control {(AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}");
+                        AudioSettings.SaveSettings();
                         break;
 
                     case "5":
@@ -117,12 +118,18 @@ namespace StreamingApplication
                         break;
 
                     case "6":
+                        AudioSettings._settings.EnableVolumeNormalization = !AudioSettings._settings.EnableVolumeNormalization;
+                        Console.WriteLine($"Volume normalization {(AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}");
+                        AudioSettings.SaveSettings();
+                        break;
+
+                    case "7":
                         return;
                 }
             }
         }
 
-        static void NetworkSettings()
+        static void NetworkMainSettings()
         {
             while (true)
             {
@@ -130,20 +137,20 @@ namespace StreamingApplication
                 Console.WriteLine("Network Settings Management:");
                 Console.WriteLine("1. View Current Settings");
                 Console.WriteLine("2. Toggle UPnP (Current: " +
-                    (StreamingApplication.NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
+                    (NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled") + ")");
                 Console.WriteLine("3. Reset to Defaults");
                 Console.WriteLine("4. Back to Main Menu");
 
                 switch (Console.ReadLine())
                 {
                     case "1":
-                        StreamingApplication.NetworkSettings.ShowCurrentSettings();
+                        NetworkSettings.ShowCurrentSettings();
                         Console.WriteLine("\nPress any key to continue...");
                         Console.ReadKey();
                         break;
                     case "2":
-                        StreamingApplication.NetworkSettings.ToggleUPnP();
-                        Console.WriteLine($"\nUPnP is now {(StreamingApplication.NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled")}");
+                        NetworkSettings.ToggleUPnP();
+                        Console.WriteLine($"\nUPnP is now {(NetworkSettings.IsUPnPEnabled() ? "Enabled" : "Disabled")}");
                         Console.WriteLine("Press any key to continue...");
                         Console.ReadKey();
                         break;
@@ -151,7 +158,7 @@ namespace StreamingApplication
                         Console.WriteLine("\nAre you sure you want to reset network settings? (y/n)");
                         if (Console.ReadLine()?.ToLower() == "y")
                         {
-                            StreamingApplication.NetworkSettings.ResetSettings();
+                            NetworkSettings.ResetSettings();
                             Console.WriteLine("Settings have been reset to defaults.");
                             Console.WriteLine("Press any key to continue...");
                             Console.ReadKey();
@@ -311,7 +318,7 @@ namespace StreamingApplication
                     device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
                 }
 
-                var (ip, port) = StreamingApplication.NetworkSettings.GetServerSettings();
+                var (ip, port) = NetworkSettings.GetServerSettings();
                 using var server = new AudioStreamingServer(ip, port, device, flow, processId);
                 server.Start();
 
@@ -331,7 +338,7 @@ namespace StreamingApplication
             try
             {
                 Console.Clear();
-                var (ip, port) = StreamingApplication.NetworkSettings.GetClientSettings();
+                var (ip, port) = NetworkSettings.GetClientSettings();
                 int outputDevice = AudioDeviceSelector.SelectPlaybackDeviceWaveOut();
 
                 using var client = new AudioStreamingClient();

@@ -15,6 +15,7 @@ namespace StreamingApplication
             public int ClientLatency { get; set; } = 60;
             public bool EnableVolumeControl { get; set; } = true;
             public int VolumeLevel { get; set; } = 100;
+            public bool EnableVolumeNormalization { get; set; } = true;
         }
 
         static AudioSettings()
