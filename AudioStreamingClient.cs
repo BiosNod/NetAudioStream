@@ -170,38 +170,6 @@ namespace StreamingApplication
             });
         }
 
-        public static void ShowVolumeControlMenu()
-        {
-            var volumeLevelMin = 0;
-            var volumeLevelMax = 10000;
-
-            Console.WriteLine("\n=== Volume Control ===");
-            Console.WriteLine($"Current volume (default is 100): {AudioSettings._settings.VolumeLevel}");
-            Console.WriteLine($"Enter volume ({volumeLevelMin}-{volumeLevelMax}) or 'd' to disable control:");
-            Console.Write("> ");
-            var input = Console.ReadLine()?.Trim().ToLower();
-
-            if (input == "d" || input == "D")
-            {
-                AudioSettings._settings.EnableVolumeControl = false;
-                AudioSettings.SaveSettings();
-                AudioUtils.ResetNormalization();
-                Console.WriteLine("Volume control disabled\n");
-            }
-            else if (int.TryParse(input, out int vol) && vol >= volumeLevelMin && vol <= volumeLevelMax)
-            {
-                AudioSettings._settings.VolumeLevel = vol;
-                AudioSettings._settings.EnableVolumeControl = true;
-                AudioSettings.SaveSettings();
-                AudioUtils.ResetNormalization();
-                Console.WriteLine($"Volume set to {vol}%\n");
-            }
-            else
-            {
-                Console.WriteLine($"Invalid input! Use {volumeLevelMin}-{volumeLevelMax} or 'd', skip, you can try again using V\n");
-            }
-        }
-
         private void HandleDisconnection()
         {
             if (!_isConnected) return;
@@ -281,10 +249,11 @@ namespace StreamingApplication
             // Если нормализация включена
             if (AudioSettings._settings.EnableVolumeNormalization)
             {
-                audioData = AudioUtils.NormalizeVolume(audioData, AudioSettings._settings.VolumeLevel, _waveProvider?.WaveFormat);
+                audioData = AudioUtils.NormalizeVolume(audioData, _waveProvider?.WaveFormat);
             }
+
             // Если нормализация отключена, но включен контроль громкости, то просто применяем регулировку громкости
-            else if (AudioSettings._settings.EnableVolumeControl)
+            if (AudioSettings._settings.EnableVolumeControl)
             {
                 audioData = AudioUtils.ApplyGain(audioData, AudioSettings._settings.VolumeLevel, _waveProvider?.WaveFormat);
             }

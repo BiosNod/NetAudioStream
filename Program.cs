@@ -109,16 +109,45 @@ namespace StreamingApplication
                         AudioSettings._settings.EnableVolumeControl = !AudioSettings._settings.EnableVolumeControl;
                         Console.WriteLine($"Volume control {(AudioSettings._settings.EnableVolumeControl ? "Enabled" : "Disabled")}");
                         AudioSettings.SaveSettings();
+                        AudioUtils.ResetNormalization();
                         break;
 
                     case "5":
-                        AudioStreamingClient.ShowVolumeControlMenu();
+                        var volumeLevelMin = 0;
+                        var volumeLevelMax = 10000;
+
+                        Console.WriteLine("\n=== Volume Control ===");
+                        Console.WriteLine($"Current volume (default is 100): {AudioSettings._settings.VolumeLevel}");
+                        Console.WriteLine($"Enter volume ({volumeLevelMin}-{volumeLevelMax}) or 'd' to disable control:");
+                        Console.Write("> ");
+                        var input = Console.ReadLine()?.Trim().ToLower();
+
+                        if (input.ToUpper() == "D")
+                        {
+                            AudioSettings._settings.EnableVolumeControl = false;
+                            AudioSettings.SaveSettings();
+                            AudioUtils.ResetNormalization();
+                            Console.WriteLine("Volume control disabled\n");
+                        }
+                        else if (int.TryParse(input, out int vol) && vol >= volumeLevelMin && vol <= volumeLevelMax)
+                        {
+                            AudioSettings._settings.VolumeLevel = vol;
+                            AudioSettings._settings.EnableVolumeControl = true;
+                            AudioSettings.SaveSettings();
+                            AudioUtils.ResetNormalization();
+                            Console.WriteLine($"Volume set to {vol}%\n");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Invalid input! Use {volumeLevelMin}-{volumeLevelMax} or 'd', skip, you can try again using V\n");
+                        }
                         break;
 
                     case "6":
                         AudioSettings._settings.EnableVolumeNormalization = !AudioSettings._settings.EnableVolumeNormalization;
                         Console.WriteLine($"Volume normalization {(AudioSettings._settings.EnableVolumeNormalization ? "Enabled" : "Disabled")}");
                         AudioSettings.SaveSettings();
+                        AudioUtils.ResetNormalization();
                         break;
 
                     case "7":
@@ -317,7 +346,8 @@ namespace StreamingApplication
                     Console.WriteLine("\nServer controls:");
                     Console.WriteLine("Q - Stop stream");
                     Console.WriteLine("A - Adjust audio during playback");
-                    Console.WriteLine("N - Adjust network during playback\n");
+                    Console.WriteLine("N - Adjust network during playback");
+                    Console.WriteLine("D - Enable/Disable debug logs\n");
                 }
 
                 ShowControls();
@@ -341,6 +371,10 @@ namespace StreamingApplication
                     {
                         NetworkMainSettings();
                         Console.WriteLine("\nContinue streaming...");
+                    }
+                    else if (key.Key == ConsoleKey.D)
+                    {
+                        Logger.DebugEnabled = !Logger.DebugEnabled;
                     }
                     else
                         ShowControls();
@@ -367,7 +401,8 @@ namespace StreamingApplication
                     Console.WriteLine("\nClient controls:");
                     Console.WriteLine("Q - Stop playback and disconnect");
                     Console.WriteLine("A - Adjust audio during playback");
-                    Console.WriteLine("N - Adjust network during playback\n");
+                    Console.WriteLine("N - Adjust network during playback");
+                    Console.WriteLine("D - Enable/disable debug logs\n");
                 }
 
                 // Добавляем обработчики событий
@@ -402,6 +437,10 @@ namespace StreamingApplication
                     {
                         NetworkMainSettings();
                         Console.WriteLine("\nContinue listening...");
+                    }
+                    else if (key.Key == ConsoleKey.D)
+                    {
+                        Logger.DebugEnabled = !Logger.DebugEnabled;
                     }
                     else
                         ShowControls();

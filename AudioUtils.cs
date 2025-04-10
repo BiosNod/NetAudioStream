@@ -1,16 +1,18 @@
-﻿// Создаем новый файл AudioUtils.cs
-using NAudio.Wave;
+﻿using NAudio.Wave;
 using StreamingApplication;
-using static System.Windows.Forms.DataFormats;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 public static class AudioUtils
 {
     public const double SilenceThreshold = 0.0001; // 0.01% от максимальной амплитуды
 
-    // Normalization
-    private static float _initialPeak = 0f;
-    private static float _referenceGain = 1.0f;
-    private static float _referenceTargetLevel = 0.0f;
+    // Простая нормализация на основе среднего пикового значения
+    private static Queue<float> _peakHistory = new Queue<float>(20);
+    private static float _initialAvgPeak = 0.0f;   // Средний пик начальной калибровки
+    private static float _calibrationBaseGain = 1.0f; // Базовая громкость
+    private static bool _isCalibrated = false;
 
     public static bool IsSilence(byte[] buffer, int bytesRecorded, WaveFormat format)
     {
@@ -27,12 +29,10 @@ public static class AudioUtils
             double sampleValue;
             if (isFloat && bytesPerSample == 4)
             {
-                // Для 32-битного float
                 sampleValue = BitConverter.ToSingle(buffer, i);
             }
             else
             {
-                // Для 16-битного PCM (предполагается по умолчанию)
                 short sample = BitConverter.ToInt16(buffer, i);
                 sampleValue = sample / (double)short.MaxValue;
             }
@@ -41,56 +41,83 @@ public static class AudioUtils
         }
 
         double rms = Math.Sqrt(sum / sampleCount);
-        Logger.Log($"[WASAPI] RMS: {(float)rms}", Logger.LogLevel.Debug);
         return rms < SilenceThreshold;
     }
 
     public static void ResetNormalization()
     {
-        _initialPeak = 0.0f;
-        _referenceGain = 1.0f;
-        _referenceTargetLevel = 0.0f;
-        Logger.Log("Audio normalization reset", Logger.LogLevel.Debug);
+        _initialAvgPeak = 0.0f;
+        _calibrationBaseGain = 1.0f;
+        _isCalibrated = false;
+        _peakHistory.Clear();
+        Logger.Log("Audio normalization reset", Logger.LogLevel.Info);
     }
 
-    public static byte[] NormalizeVolume(byte[] audioData, int volumePercent, WaveFormat format)
+    public static byte[] NormalizeVolume(byte[] audioData, WaveFormat format)
     {
+        // Простое базовое усиление
+        float baseGain = 1.0f;
+
+        // Измерение текущего пикового значения в любом случае
         float currentPeak = AnalyzePeak(audioData, format);
 
-        // Инициализация при первом запуске
-        if (_initialPeak == 0.0f)
+        // Обновляем историю пиков, только если не тишина
+        if (currentPeak > 0.01f)
         {
-            _initialPeak = currentPeak;
-            _referenceTargetLevel = volumePercent / 100.0f;
-            _referenceGain = CalculateGain(_initialPeak, _referenceTargetLevel, format);
-            Logger.Log($"Initial calibration: peak={_initialPeak}, target={_referenceTargetLevel}, gain={_referenceGain}", Logger.LogLevel.Debug);
-        }
-        else if (currentPeak > 0.0001f) // Не тишина
-        {
-            // Адаптивный коэффициент - компенсирует изменения входного сигнала
-            float adaptiveGain = (_initialPeak / currentPeak) * _referenceGain;
-            adaptiveGain = Math.Min(adaptiveGain, 10.0f); // Ограничение максимального усиления
-
-            Logger.Log($"Adaptive gain: {adaptiveGain} (current peak: {currentPeak}, initial: {_initialPeak})", Logger.LogLevel.Debug);
-            return ApplyGain(audioData, adaptiveGain, format);
+            if (_peakHistory.Count >= 20)
+                _peakHistory.Dequeue();
+            _peakHistory.Enqueue(currentPeak);
         }
 
-        return ApplyGain(audioData, _referenceGain, format);
+        // Если еще не откалибровано
+        if (!_isCalibrated)
+        {
+            // Собираем данные для калибровки
+            if (_peakHistory.Count >= 20 && _peakHistory.Average() > 0.01f)
+            {
+                _initialAvgPeak = _peakHistory.Average();
+                _calibrationBaseGain = baseGain;
+                _isCalibrated = true;
+                Logger.Log($"Normalization calibration complete: _initialAvgPeak={_initialAvgPeak}, _calibrationBaseGain={_calibrationBaseGain}", Logger.LogLevel.Info);
+            }
+            else
+            {
+                Logger.Log($"Collecting calibration data: {_peakHistory.Count}/20, currentPeak={currentPeak}", Logger.LogLevel.Debug);
+                return ApplyGain(audioData, baseGain, format);
+            }
+        }
+
+        // Применяем нормализованное усиление
+        return ApplyNormalizedGain(audioData, baseGain, format);
     }
 
-    private static float CalculateGain(float peak, float targetLevel, WaveFormat format)
+    // Главный метод применения нормализованного усиления
+    private static byte[] ApplyNormalizedGain(byte[] audioData, float baseGain, WaveFormat format)
     {
-        float maxPossible = (format.BitsPerSample == 32 &&
-                             (format.Encoding == WaveFormatEncoding.IeeeFloat ||
-                              format.Encoding == WaveFormatEncoding.Extensible))
-                           ? 1.0f : 32767f;
+        if (!_isCalibrated || _peakHistory.Count == 0)
+            return ApplyGain(audioData, baseGain, format);
 
-        float targetPeak = targetLevel * maxPossible;
-        float gain = peak > 0.0001f ? (targetPeak / peak) : 1.0f;
-        return Math.Min(gain, 10.0f);
+        // Текущее среднее значение пика
+        float currentAvgPeak = _peakHistory.Average();
+
+        // Простая формула: 
+        // 1. Сначала определяем, насколько текущий avg отличается от начального
+        // 2. Затем корректируем текущее усиление для возврата к такому же уровню громкости
+        float ratio = (_initialAvgPeak / currentAvgPeak);
+
+        // Корректируем с учетом изменения громкости пользователем
+        float volumeRatio = baseGain / _calibrationBaseGain;
+
+        // Вычисляем итоговое усиление
+        float adjustedGain = baseGain * ratio;
+
+        Logger.Log($"Normalization: currentAvgPeak={currentAvgPeak}, initialAvgPeak={_initialAvgPeak}, " +
+                  $"ratio={ratio}, baseGain={baseGain}, adjustedGain={adjustedGain}", Logger.LogLevel.Debug);
+
+        return ApplyGain(audioData, adjustedGain, format);
     }
 
-    // Метод для анализа пикового значения
+    // Анализ пикового значения
     private static float AnalyzePeak(byte[] audioData, WaveFormat format)
     {
         float currentPeak = 0f;
@@ -116,27 +143,20 @@ public static class AudioUtils
             }
         }
 
-        Logger.Log($"Current audio peak: {currentPeak}", Logger.LogLevel.Debug);
         return currentPeak;
     }
 
     public static byte[] ApplyGain(byte[] audioData, int volumePercent, WaveFormat format)
     {
         var gain = volumePercent / 100f;
-        Logger.Log($"Convert volume {volumePercent}% => {gain}f", Logger.LogLevel.Debug);
         return ApplyGain(audioData, gain, format);
     }
 
-    // Метод для применения коэффициента усиления
     public static byte[] ApplyGain(byte[] audioData, float gain, WaveFormat format)
     {
-        if (gain == 1.0f || audioData.Length == 0)
-        {
-            Logger.Log($"Skip applying audio gain: {gain}", Logger.LogLevel.Debug);
+        if (Math.Abs(gain - 1.0f) < 0.01f || audioData.Length == 0)
             return audioData;
-        }
 
-        Logger.Log($"Apply audio gain: {gain}", Logger.LogLevel.Debug);
         byte[] processedData = new byte[audioData.Length];
 
         if (format.BitsPerSample == 32 &&
