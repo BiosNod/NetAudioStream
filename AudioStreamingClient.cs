@@ -23,7 +23,10 @@ namespace StreamingApplication
         private int _reconnectAttempts = 0;
         private const int MaxReconnectAttempts = 1000;
         private const int ReconnectDelayMs = 3000;
-        private CancellationTokenSource? _cts;
+        private CancellationTokenSource? _userCancelCts;
+
+        private const int ConnectionTimeoutMs = 5000;
+        private CancellationTokenSource? _connectCts;
 
         public event Action? OnConnected;
         public event Action<string>? OnDisconnected;
@@ -34,46 +37,118 @@ namespace StreamingApplication
             _serverIp = ip;
             _serverPort = port;
             _selectedDevice = outputDevice;
-            _cts = new CancellationTokenSource();
 
-            await TryConnectWithRetry();
+            // Start key monitoring in a separate task
+            var keyMonitorCts = new CancellationTokenSource();
+            var keyMonitorTask = Task.Run(() => MonitorKeyPresses(keyMonitorCts.Token));
+
+            try
+            {
+                await TryConnectWithRetry();
+            }
+            finally
+            {
+                // Stop key monitoring
+                keyMonitorCts.Cancel();
+                await keyMonitorTask;
+                keyMonitorCts.Dispose();
+            }
+        }
+
+        private void MonitorKeyPresses(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Q)
+                {
+                    _userCancelCts?.Cancel();
+                    Console.WriteLine("\nConnection attempt cancelled by user!");
+                    break;
+                }
+                Thread.Sleep(100);
+            }
         }
 
         private async Task TryConnectWithRetry()
         {
-            while (_reconnectAttempts < MaxReconnectAttempts && !(_cts?.IsCancellationRequested ?? true))
+            // Create a new user cancellation token source if needed
+            if (_userCancelCts == null || _userCancelCts.IsCancellationRequested)
+                _userCancelCts = new CancellationTokenSource();
+
+            while (_reconnectAttempts < MaxReconnectAttempts && !_userCancelCts.IsCancellationRequested)
             {
                 try
                 {
                     _audioBuffer = new MemoryStream(2 * 1024 * 1024);
-                    await InitializeNetworkConnection(_serverIp, _serverPort);
 
-                    var (sampleRate, bits, channels) = await ReceiveWaveFormat();
-                    InitializeAudioDevice(sampleRate, bits, channels);
+                    // Create a new timeout source for this connection attempt
+                    using var timeoutCts = new CancellationTokenSource(ConnectionTimeoutMs);
+                    using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        _userCancelCts.Token, timeoutCts.Token);
 
-                    _reconnectAttempts = 0; // Сброс счетчика при успешном подключении
-                    OnConnected?.Invoke();
-                    StartReceivingData();
-                    Logger.Log($"Connected to {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
+                    try
+                    {
+                        // Connection attempt with combined token
+                        await InitializeNetworkConnection(_serverIp, _serverPort, combinedCts.Token);
+
+                        // Get audio format parameters
+                        var (sampleRate, bits, channels) = await ReceiveWaveFormat();
+
+                        // Initialize audio device
+                        InitializeAudioDevice(sampleRate, bits, channels);
+
+                        _reconnectAttempts = 0; // Reset counter on successful connection
+                        OnConnected?.Invoke();
+                        StartReceivingData();
+                        Logger.Log($"Connected to {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
+                        return;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Check which token triggered the cancellation
+                        if (_userCancelCts.IsCancellationRequested)
+                        {
+                            Logger.Log("Connection cancelled by user", Logger.LogLevel.Warning);
+                            throw; // Rethrow to exit the method
+                        }
+                        else if (timeoutCts.IsCancellationRequested)
+                        {
+                            Logger.Log($"Connection to {_serverIp}:{_serverPort} timed out ({ConnectionTimeoutMs}ms)",
+                                Logger.LogLevel.Warning);
+                            // Continue to retry
+                        }
+                    }
+                }
+                catch (Exception ex) when (ex is SocketException or IOException)
+                {
+                    Logger.Log($"Network error: {ex.Message}", Logger.LogLevel.Warning);
+                }
+                catch (OperationCanceledException) when (_userCancelCts.IsCancellationRequested)
+                {
+                    // User cancelled, exit the retry loop
+                    Logger.Log("Connection attempts cancelled by user", Logger.LogLevel.Info);
+                    OnDisconnected?.Invoke("Cancelled by user");
                     return;
                 }
                 catch (Exception ex)
                 {
-                    _reconnectAttempts++;
-                    if (_reconnectAttempts >= MaxReconnectAttempts)
-                    {
-                        Logger.Log($"Max reconnect attempts reached. Giving up.", Logger.LogLevel.Error);
-                        OnDisconnected?.Invoke("Max reconnect attempts reached");
-                        Disconnect();
-                        return;
-                    }
-
-                    OnReconnecting?.Invoke($"Attempt {_reconnectAttempts} of {MaxReconnectAttempts}");
-                    Logger.Log($"Connection failed ({_reconnectAttempts}/{MaxReconnectAttempts}): {ex.Message}. Retrying in {ReconnectDelayMs / 1000} seconds...",
-                             Logger.LogLevel.Warning);
-
-                    await Task.Delay(ReconnectDelayMs, _cts?.Token ?? CancellationToken.None);
+                    Logger.Log($"Connection error: {ex.Message}", Logger.LogLevel.Error);
                 }
+
+                _reconnectAttempts++;
+                if (_reconnectAttempts >= MaxReconnectAttempts)
+                {
+                    Logger.Log($"Max reconnect attempts reached. Giving up.", Logger.LogLevel.Error);
+                    OnDisconnected?.Invoke("Max reconnect attempts reached");
+                    Disconnect();
+                    return;
+                }
+
+                OnReconnecting?.Invoke($"Attempt {_reconnectAttempts} of {MaxReconnectAttempts}");
+                Logger.Log($"Connection failed ({_reconnectAttempts}/{MaxReconnectAttempts}). Retrying in {ReconnectDelayMs / 1000} seconds...",
+                         Logger.LogLevel.Warning);
+
+                await Task.Delay(ReconnectDelayMs, _userCancelCts.Token);
             }
         }
 
@@ -126,7 +201,7 @@ namespace StreamingApplication
         {
             if (!_isConnected && _reconnectAttempts == 0) return;
 
-            _cts?.Cancel();
+            _userCancelCts?.Cancel();
             _isConnected = false;
             Logger.Log("Disconnecting...", Logger.LogLevel.Info);
 
@@ -146,12 +221,21 @@ namespace StreamingApplication
             GC.SuppressFinalize(this);
         }
 
-        private async Task InitializeNetworkConnection(string ip, int port)
+        private async Task InitializeNetworkConnection(string ip, int port, CancellationToken cancellationToken)
         {
             _client = new TcpClient();
-            await _client.ConnectAsync(ip, port);
-            _stream = _client.GetStream();
-            _isConnected = true;
+            try
+            {
+                await _client.ConnectAsync(ip, port, cancellationToken);
+                _stream = _client.GetStream();
+                _isConnected = true;
+            }
+            catch
+            {
+                _client.Dispose();
+                _client = null;
+                throw;
+            }
         }
 
         private void StartReceivingData()
@@ -178,7 +262,7 @@ namespace StreamingApplication
             OnDisconnected?.Invoke("Connection lost");
             Logger.Log($"Disconnected from server {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
 
-            if (!(_cts?.IsCancellationRequested ?? true))
+            if (!(_userCancelCts?.IsCancellationRequested ?? true))
             {
                 Logger.Log("Attempting to reconnect...", Logger.LogLevel.Info);
                 _ = TryConnectWithRetry();
@@ -189,7 +273,7 @@ namespace StreamingApplication
         {
             var headerBuffer = new byte[4];
 
-            while (_isConnected && !(_cts?.IsCancellationRequested ?? true))
+            while (_isConnected && !(_userCancelCts?.IsCancellationRequested ?? true))
             {
                 try
                 {

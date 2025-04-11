@@ -333,10 +333,12 @@ namespace StreamingApplication
                     device = AudioDeviceSelector.SelectRecordingDeviceMMD();
                     flow = DataFlow.Capture;
                 }
-                else
+                else if ( choice == "1")
                 {
                     device = AudioDeviceSelector.SelectPlaybackDeviceMMD();
                 }
+                else
+                    throw new Exception("Wrong number");
 
                 var (ip, port) = NetworkSettings.GetServerSettings();
                 using var server = new AudioStreamingServer(ip, port, device, flow, processId, processName);
@@ -460,8 +462,6 @@ namespace StreamingApplication
             catch (Exception ex)
             {
                 Logger.Log($"Client error: {ex.Message}", Logger.LogLevel.Error);
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
             }
         }
     }
