@@ -30,7 +30,7 @@
 - Automatic (UPnP):
   Enable in Settings → Network → UPnP
 - Manual:
-  TCP: 49800-49810
+  TCP: 49800
 
 ## 🎯 Usage Modes
 
