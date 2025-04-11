@@ -95,7 +95,7 @@ namespace StreamingApplication
             return device;
         }
 
-        public static uint SelectProcess()
+        public static (uint Pid, string Name) SelectProcess()
         {
             using var deviceEnumerator = new MMDeviceEnumerator();
             var device = deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
@@ -130,7 +130,9 @@ namespace StreamingApplication
                 Console.WriteLine($"{i}. {sorted[i].Name} (PID: {sorted[i].Pid}) - {sorted[i].Memory / 1024 / 1024} MB");
             }
 
-            return sorted[int.Parse(Console.ReadLine()!)].Pid;
+            var selectedIndex = int.Parse(Console.ReadLine()!);
+            Console.WriteLine($"Selected process name: {sorted[selectedIndex].Name}, PID: {sorted[selectedIndex].Pid}");
+            return (sorted[selectedIndex].Pid, sorted[selectedIndex].Name);
         }
     }
 }

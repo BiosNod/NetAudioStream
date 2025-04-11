@@ -21,8 +21,8 @@ namespace StreamingApplication
         private string _serverIp = string.Empty;
         private int _serverPort;
         private int _reconnectAttempts = 0;
-        private const int MaxReconnectAttempts = 5;
-        private const int ReconnectDelayMs = 5000;
+        private const int MaxReconnectAttempts = 1000;
+        private const int ReconnectDelayMs = 3000;
         private CancellationTokenSource? _cts;
 
         public event Action? OnConnected;

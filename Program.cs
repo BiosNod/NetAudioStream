@@ -299,6 +299,7 @@ namespace StreamingApplication
                 MMDevice device;
                 DataFlow flow = DataFlow.Render;
                 uint processId = 0;
+                string processName = "";
 
                 var enumerator = new MMDeviceEnumerator();
 
@@ -324,7 +325,7 @@ namespace StreamingApplication
                         return;
                     }
 
-                    processId = AudioDeviceSelector.SelectProcess();
+                    (processId, processName) = AudioDeviceSelector.SelectProcess();
                     device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
                 }
                 else if (choice == "2")
@@ -338,7 +339,7 @@ namespace StreamingApplication
                 }
 
                 var (ip, port) = NetworkSettings.GetServerSettings();
-                using var server = new AudioStreamingServer(ip, port, device, flow, processId);
+                using var server = new AudioStreamingServer(ip, port, device, flow, processId, processName);
                 server.Start();
 
                 void ShowControls()

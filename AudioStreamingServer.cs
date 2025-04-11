@@ -6,25 +6,44 @@ using Concentus.Structs;
 using Concentus.Enums;
 using System.IO.Compression;
 using System.Threading.Channels;
+using System.Diagnostics;
 
 namespace StreamingApplication
 {
     public class AudioStreamingServer : IDisposable
     {
+        // Основные серверные настройки
         private readonly TcpListener _listener;
         private readonly int _port;
         private readonly List<NetworkStream> _clientStreams = new();
-        private readonly IAudioCapturer _capturer;
+        private IAudioCapturer _capturer;
         private readonly object _syncLock = new();
         private bool _isRunning;
         private WaveFormat _serverWaveFormat;
 
+        // Буферизация вывода
         private MemoryStream _audioBuffer = new MemoryStream();
         private readonly object _bufferLock = new object();
         private Timer _sendTimer;
         private bool _processing = false;
 
-        public AudioStreamingServer(string ip, int port, MMDevice inputDevice, DataFlow flow, uint processId = 0)
+        // Мониторинг процесса в случае стриминга звука с процесса
+        private string _processName;
+        private uint _originalProcessId;
+        private int _reconnectAttempts = 0;
+        private const int MaxProcessReconnectAttempts = 1000;
+        private int processCheckTime = 3000;
+        private Timer _processCheckTimer;
+        private bool _processMonitoringEnabled = false;
+
+        public AudioStreamingServer(
+            string ip,
+            int port,
+            MMDevice inputDevice,
+            DataFlow flow,
+            uint processId = 0,
+            string processName = ""
+        )
         {
             _port = port;
             _listener = new TcpListener(IPAddress.Parse(ip), port);
@@ -46,10 +65,120 @@ namespace StreamingApplication
                 _serverWaveFormat = new WaveFormat(44100, 16, 2);
             else
                 _serverWaveFormat = inputDevice.AudioClient.MixFormat;
-            
+
+            if (processId > 0)
+            {
+                _originalProcessId = processId;
+                _processName = processName;
+                StartProcessMonitoring();
+            }
+
             _capturer.DataAvailable += OnAudioDataAvailable;
             var interval = AudioSettings._settings.ServerLatency;
             _sendTimer = new Timer(SendBufferedData, null, interval, interval);
+        }
+
+        private void StartProcessMonitoring()
+        {
+            _processMonitoringEnabled = true;
+            _processCheckTimer = new Timer(CheckProcessStatus, null, processCheckTime, processCheckTime);
+        }
+
+        private void StopProcessMonitoring()
+        {
+            _processMonitoringEnabled = false;
+            _processCheckTimer?.Dispose();
+        }
+
+        private void CheckProcessStatus(object state)
+        {
+            if (!_processMonitoringEnabled) return;
+
+            try
+            {
+                // Проверяем существует ли оригинальный процесс
+                var processExists = Process.GetProcesses()
+                    .Any(p => p.Id == (int)_originalProcessId && !p.HasExited);
+
+                if (processExists) return;
+
+                Logger.Log($"Process {_processName} (PID: {_originalProcessId}) not found. Attempting to reconnect...",
+                         Logger.LogLevel.Warning);
+
+                StopProcessMonitoring();
+                AttemptProcessReconnection();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Process check error: {ex.Message}", Logger.LogLevel.Error);
+            }
+        }
+
+        private async void AttemptProcessReconnection()
+        {
+            try
+            {
+                _reconnectAttempts = 0;
+
+                while (_reconnectAttempts < MaxProcessReconnectAttempts)
+                {
+                    _reconnectAttempts++;
+                    Logger.Log($"Searching for {_processName} ({_reconnectAttempts}/{MaxProcessReconnectAttempts})...",
+                              Logger.LogLevel.Info);
+
+                    var processes = Process.GetProcessesByName(_processName)
+                        .Where(p => !p.HasExited)
+                        .ToList();
+
+                    if (processes.Count > 0)
+                    {
+                        var newPid = (uint)processes[0].Id;
+                        Logger.Log($"Found new process instance: {_processName} (PID: {newPid})",
+                                 Logger.LogLevel.Info);
+
+                        // Рестарт сервера с новым PID
+                        RestartWithNewProcessId(newPid);
+                        return;
+                    }
+
+                    await Task.Delay(processCheckTime);
+                }
+
+                Logger.Log($"Max reconnect attempts reached for {_processName}. Stopping server.",
+                          Logger.LogLevel.Error);
+                Stop();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Process reconnect error: {ex.Message}", Logger.LogLevel.Error);
+                Stop();
+            }
+        }
+
+        private void RestartWithNewProcessId(uint newPid)
+        {
+            try
+            {
+                // Останавливаем текущий захват
+                _capturer.Stop();
+                _capturer.Dispose();
+
+                // Создаем новый захват
+                _capturer = new ProcessAudioCapturer(newPid);
+                _capturer.DataAvailable += OnAudioDataAvailable;
+                _originalProcessId = newPid;
+
+                // Перезапускаем мониторинг
+                StartProcessMonitoring();
+                _capturer.Start();
+
+                Logger.Log($"Successfully reconnected to new process instance", Logger.LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to restart with new PID: {ex.Message}", Logger.LogLevel.Error);
+                Stop();
+            }
         }
 
         public async void Start()
@@ -229,6 +358,10 @@ namespace StreamingApplication
             }
         }
 
-        public void Dispose() => Stop();
+        public void Dispose()
+        {
+            StopProcessMonitoring();
+            Stop();
+        }
     }
 }
