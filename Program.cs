@@ -402,6 +402,7 @@ namespace StreamingApplication
                     Console.WriteLine("Q - Stop playback and disconnect");
                     Console.WriteLine("A - Adjust audio during playback");
                     Console.WriteLine("N - Adjust network during playback");
+                    Console.WriteLine("R - Recalibrate audio normalization");
                     Console.WriteLine("D - Enable/disable debug logs\n");
                 }
 
@@ -441,6 +442,15 @@ namespace StreamingApplication
                     else if (key.Key == ConsoleKey.D)
                     {
                         Logger.DebugEnabled = !Logger.DebugEnabled;
+                    }
+                    else if (key.Key == ConsoleKey.R)
+                    {
+                        if (AudioSettings._settings.EnableVolumeNormalization)
+                            AudioUtils.ResetNormalization();
+                        else
+                            Console.WriteLine("\nAudio normalization is disabled, please turn it on from audio settings (A) before recalibration");
+
+                        Console.WriteLine("\nContinue listening...");
                     }
                     else
                         ShowControls();
