@@ -15,7 +15,6 @@ namespace StreamingApplication
         private NetworkStream? _stream;
         private WaveOutEvent? _outputDevice;
         private BufferedWaveProvider? _waveProvider;
-        private bool _isConnected;
         private int _selectedDevice;
         private MemoryStream? _audioBuffer;
         private string _serverIp = string.Empty;
@@ -24,13 +23,23 @@ namespace StreamingApplication
         private const int MaxReconnectAttempts = 1000;
         private const int ReconnectDelayMs = 3000;
         private CancellationTokenSource? _userCancelCts;
-
         private const int ConnectionTimeoutMs = 5000;
-        private CancellationTokenSource? _connectCts;
 
         public event Action? OnConnected;
         public event Action<string>? OnDisconnected;
         public event Action<string>? OnReconnecting;
+
+        public AudioStreamingClient()
+        {
+            // Добавляем обработчики событий
+            OnConnected += () => Logger.Log($"Client connected to: {_serverIp}:{_serverPort}", Logger.LogLevel.Warning);
+
+            OnDisconnected += reason =>
+                Logger.Log($"Disconnected: {reason}", Logger.LogLevel.Warning);
+
+            OnReconnecting += attempt =>
+                Logger.Log($"Reconnection attempt: {attempt}", Logger.LogLevel.Info);
+        }
 
         public async Task ConnectAsync(string ip, int port, int outputDevice)
         {
@@ -38,35 +47,7 @@ namespace StreamingApplication
             _serverPort = port;
             _selectedDevice = outputDevice;
 
-            // Start key monitoring in a separate task
-            var keyMonitorCts = new CancellationTokenSource();
-            var keyMonitorTask = Task.Run(() => MonitorKeyPresses(keyMonitorCts.Token));
-
-            try
-            {
-                await TryConnectWithRetry();
-            }
-            finally
-            {
-                // Stop key monitoring
-                keyMonitorCts.Cancel();
-                await keyMonitorTask;
-                keyMonitorCts.Dispose();
-            }
-        }
-
-        private void MonitorKeyPresses(CancellationToken token)
-        {
-            while (!token.IsCancellationRequested)
-            {
-                if (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Q)
-                {
-                    _userCancelCts?.Cancel();
-                    Console.WriteLine("\nConnection attempt cancelled by user!");
-                    break;
-                }
-                Thread.Sleep(100);
-            }
+            await TryConnectWithRetry();
         }
 
         private async Task TryConnectWithRetry()
@@ -83,16 +64,15 @@ namespace StreamingApplication
 
                     // Create a new timeout source for this connection attempt
                     using var timeoutCts = new CancellationTokenSource(ConnectionTimeoutMs);
-                    using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                        _userCancelCts.Token, timeoutCts.Token);
+                    using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(_userCancelCts.Token, timeoutCts.Token);
 
                     try
                     {
                         // Connection attempt with combined token
-                        await InitializeNetworkConnection(_serverIp, _serverPort, combinedCts.Token);
+                        InitializeNetworkConnection(_serverIp, _serverPort, combinedCts.Token);
 
                         // Get audio format parameters
-                        var (sampleRate, bits, channels) = await ReceiveWaveFormat();
+                        var (sampleRate, bits, channels) = await ReceiveWaveFormat(combinedCts);
 
                         // Initialize audio device
                         InitializeAudioDevice(sampleRate, bits, channels);
@@ -100,7 +80,6 @@ namespace StreamingApplication
                         _reconnectAttempts = 0; // Reset counter on successful connection
                         OnConnected?.Invoke();
                         StartReceivingData();
-                        Logger.Log($"Connected to {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
                         return;
                     }
                     catch (OperationCanceledException)
@@ -144,23 +123,22 @@ namespace StreamingApplication
                     return;
                 }
 
-                OnReconnecting?.Invoke($"Attempt {_reconnectAttempts} of {MaxReconnectAttempts}");
-                Logger.Log($"Connection failed ({_reconnectAttempts}/{MaxReconnectAttempts}). Retrying in {ReconnectDelayMs / 1000} seconds...",
-                         Logger.LogLevel.Warning);
+                OnReconnecting?.Invoke($"({_reconnectAttempts}/{MaxReconnectAttempts})...");
+                Logger.Log($"Connection failed. Retrying in {ReconnectDelayMs / 1000} seconds...", Logger.LogLevel.Warning);
 
                 await Task.Delay(ReconnectDelayMs, _userCancelCts.Token);
             }
         }
 
-        private async Task<(int, int, int)> ReceiveWaveFormat()
+        private async Task<(int, int, int)> ReceiveWaveFormat(CancellationTokenSource cts)
         {
             byte[] formatData = new byte[12];
             int bytesRead = 0;
 
             while (bytesRead < 12)
             {
-                int read = await _stream!.ReadAsync(formatData, bytesRead, 12 - bytesRead);
-                if (read == 0) throw new Exception("Failed to receive wave format");
+                int read = await _stream!.ReadAsync(formatData, bytesRead, 12 - bytesRead, cts.Token);
+                if (read == 0) throw new Exception("Connection error, failed to receive wave format");
                 bytesRead += read;
             }
 
@@ -199,10 +177,7 @@ namespace StreamingApplication
 
         public void Disconnect()
         {
-            if (!_isConnected && _reconnectAttempts == 0) return;
-
             _userCancelCts?.Cancel();
-            _isConnected = false;
             Logger.Log("Disconnecting...", Logger.LogLevel.Info);
 
             _outputDevice?.Stop();
@@ -212,7 +187,7 @@ namespace StreamingApplication
             _outputDevice?.Dispose();
             _audioBuffer?.Dispose();
 
-            OnDisconnected?.Invoke("Disconnected by user");
+            OnDisconnected?.Invoke("by user");
         }
 
         public void Dispose()
@@ -221,14 +196,14 @@ namespace StreamingApplication
             GC.SuppressFinalize(this);
         }
 
-        private async Task InitializeNetworkConnection(string ip, int port, CancellationToken cancellationToken)
+        private void InitializeNetworkConnection(string ip, int port, CancellationToken cancellationToken)
         {
             _client = new TcpClient();
             try
             {
-                await _client.ConnectAsync(ip, port, cancellationToken);
+                Logger.Log($"Trying to connect to: {ip}:{port}", Logger.LogLevel.Info);
+                _client.Connect(ip, port);
                 _stream = _client.GetStream();
-                _isConnected = true;
             }
             catch
             {
@@ -256,9 +231,6 @@ namespace StreamingApplication
 
         private void HandleDisconnection()
         {
-            if (!_isConnected) return;
-
-            _isConnected = false;
             OnDisconnected?.Invoke("Connection lost");
             Logger.Log($"Disconnected from server {_serverIp}:{_serverPort}", Logger.LogLevel.Info);
 
@@ -273,7 +245,7 @@ namespace StreamingApplication
         {
             var headerBuffer = new byte[4];
 
-            while (_isConnected && !(_userCancelCts?.IsCancellationRequested ?? true))
+            while (!(_userCancelCts?.IsCancellationRequested ?? true))
             {
                 try
                 {
@@ -297,7 +269,7 @@ namespace StreamingApplication
         private async Task ReadPacketHeader(byte[] buffer)
         {
             int totalRead = 0;
-            while (totalRead < 4 && _isConnected)
+            while (totalRead < 4)
             {
                 int bytesRead = await _stream!.ReadAsync(buffer, totalRead, 4 - totalRead);
                 if (bytesRead == 0) throw new SocketException();
@@ -311,7 +283,7 @@ namespace StreamingApplication
             var encryptedData = new byte[packetSize];
             int totalRead = 0;
 
-            while (totalRead < packetSize && _isConnected)
+            while (totalRead < packetSize)
             {
                 int bytesRead = await _stream!.ReadAsync(
                     encryptedData,

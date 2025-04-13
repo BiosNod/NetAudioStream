@@ -1,5 +1,6 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using System.Drawing;
 using System.Runtime.InteropServices;
 
 namespace StreamingApplication
@@ -409,17 +410,10 @@ namespace StreamingApplication
                     Console.WriteLine("D - Enable/disable debug logs\n");
                 }
 
-                // Добавляем обработчики событий
-                client.OnConnected += ShowControls;
-
-                client.OnDisconnected += reason =>
-                    Logger.Log($"Disconnected: {reason}", Logger.LogLevel.Warning);
-
-                client.OnReconnecting += attempt =>
-                    Logger.Log($"Reconnection attempt {attempt}", Logger.LogLevel.Info);
+                ShowControls();
 
                 // Запускаем подключение
-                await client.ConnectAsync(ip, port, outputDevice);
+                _ = client.ConnectAsync(ip, port, outputDevice);
 
                 // Основной цикл ожидания
                 while (true)
