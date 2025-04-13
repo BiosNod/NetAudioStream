@@ -301,6 +301,7 @@ namespace StreamingApplication
                 DataFlow flow = DataFlow.Render;
                 uint processId = 0;
                 string processName = "";
+                string mode = "includetree";
 
                 var enumerator = new MMDeviceEnumerator();
 
@@ -326,7 +327,37 @@ namespace StreamingApplication
                         return;
                     }
 
-                    (processId, processName) = AudioDeviceSelector.SelectProcess();
+                    bool processSelectionDone = false;
+                    while (!processSelectionDone)
+                    {
+                        (processId, processName) = AudioDeviceSelector.SelectProcess();
+
+                        // Выбор режима трансляции
+                        Console.WriteLine("\nChoose capture mode:");
+                        Console.WriteLine("1. Include only selected process (includetree)");
+                        Console.WriteLine("2. Exclude selected process (excludetree)");
+                        Console.WriteLine("3. Reselect process");
+                        Console.Write("Select mode: ");
+
+                        switch (Console.ReadLine())
+                        {
+                            case "1":
+                                mode = "includetree";
+                                processSelectionDone = true;
+                                break;
+                            case "2":
+                                mode = "excludetree";
+                                processSelectionDone = true;
+                                break;
+                            case "3":
+                                continue; // Повторный выбор процесса
+                            default:
+                                Console.WriteLine("Invalid selection, using includetree by default");
+                                processSelectionDone = true;
+                                break;
+                        }
+                    }
+
                     device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
                 }
                 else if (choice == "2")
@@ -342,7 +373,7 @@ namespace StreamingApplication
                     throw new Exception("Wrong number");
 
                 var (ip, port) = NetworkSettings.GetServerSettings();
-                using var server = new AudioStreamingServer(ip, port, device, flow, processId, processName);
+                using var server = new AudioStreamingServer(ip, port, device, flow, processId, processName, mode);
                 server.Start();
 
                 void ShowControls()

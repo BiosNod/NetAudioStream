@@ -42,7 +42,8 @@ namespace StreamingApplication
             MMDevice inputDevice,
             DataFlow flow,
             uint processId = 0,
-            string processName = ""
+            string processName = "",
+            string mode = "includetree"
         )
         {
             _port = port;
@@ -51,7 +52,7 @@ namespace StreamingApplication
             if (flow == DataFlow.Render)
             {
                 _capturer = processId > 0
-                    ? new ProcessAudioCapturer(processId)
+                    ? new ProcessAudioCapturer(processId, mode)
                     : new WasapiLoopbackCapturer(inputDevice);
             }
             else
@@ -159,12 +160,13 @@ namespace StreamingApplication
         {
             try
             {
+                string prevMode = ((ProcessAudioCapturer)_capturer)._captureMode;
                 // Останавливаем текущий захват
                 _capturer.Stop();
                 _capturer.Dispose();
 
                 // Создаем новый захват
-                _capturer = new ProcessAudioCapturer(newPid);
+                _capturer = new ProcessAudioCapturer(newPid, prevMode);
                 _capturer.DataAvailable += OnAudioDataAvailable;
                 _originalProcessId = newPid;
 

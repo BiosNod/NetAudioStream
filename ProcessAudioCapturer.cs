@@ -10,7 +10,8 @@ namespace StreamingApplication
 {
     public class ProcessAudioCapturer : JobManager, IAudioCapturer, IDisposable
     {
-        private readonly uint _targetProcessId;
+        public readonly uint _targetProcessId;
+        public readonly string _captureMode;
         private Process _loopbackProcess;
         private CancellationTokenSource _cts;
         private Task _readTask;
@@ -25,9 +26,10 @@ namespace StreamingApplication
         /// </summary>
         /// <param name="device">Audio device (not used in this implementation but kept for interface compatibility)</param>
         /// <param name="processId">Target process ID to capture audio from</param>
-        public ProcessAudioCapturer(uint processId)
+        public ProcessAudioCapturer(uint processId, string mode)
         {
             _targetProcessId = processId;
+            _captureMode = mode;
             // Создаем JobObject при инициализации класса
             CreateAndConfigureJobObject();
         }
@@ -54,7 +56,7 @@ namespace StreamingApplication
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = ApplicationLoopbackPath,
-                    Arguments = $"{_targetProcessId} includetree -stream -silence -skipheaders",
+                    Arguments = $"{_targetProcessId} {_captureMode} -stream -silence -skipheaders",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
