@@ -127,10 +127,10 @@ namespace StreamingApplication
             Console.WriteLine("Available Processes:");
             for (int i = 0; i < sorted.Count; i++)
             {
-                Console.WriteLine($"{i}. {sorted[i].Name} (PID: {sorted[i].Pid}) - {sorted[i].Memory / 1024 / 1024} MB");
+                Console.WriteLine($"{i + 1}. {sorted[i].Name} (PID: {sorted[i].Pid}) - {sorted[i].Memory / 1024 / 1024} MB");
             }
 
-            var selectedIndex = int.Parse(Console.ReadLine()!);
+            var selectedIndex = int.Parse(Console.ReadLine()!) - 1;
             Console.WriteLine($"Selected process name: {sorted[selectedIndex].Name}, PID: {sorted[selectedIndex].Pid}");
             return (sorted[selectedIndex].Pid, sorted[selectedIndex].Name);
         }
